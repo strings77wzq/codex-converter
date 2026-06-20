@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codex-converter/internal/config"
 )
@@ -146,6 +147,46 @@ func TestHandler_ResponsesEndpoint(t *testing.T) {
 	}
 	if resp.Usage.InputTokens != 10 {
 		t.Errorf("usage.input_tokens = %d, want 10", resp.Usage.InputTokens)
+	}
+}
+
+func TestHandler_BackendTimeout(t *testing.T) {
+	// Backend that hangs without ever sending response headers.
+	release := make(chan struct{})
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release // block until test cleanup
+	}))
+	defer backend.Close()
+	defer close(release)
+
+	cfg := &config.Config{
+		Providers: []config.Provider{
+			{Name: "test", BaseURL: backend.URL, Model: "deepseek-v4-pro", AuthStyle: "bearer"},
+		},
+		DefaultProvider: "test",
+	}
+
+	handler := NewHandler(cfg)
+	// White-box: shrink the response-header timeout so the test is fast.
+	handler.client = &http.Client{
+		Transport: &http.Transport{
+			ResponseHeaderTimeout: 200 * time.Millisecond,
+		},
+	}
+
+	reqBody := `{"model":"deepseek-v4-pro","input":"Hello","stream":false}`
+	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d (502) on backend header timeout", w.Code, http.StatusBadGateway)
+	}
+
+	if body := w.Body.String(); !strings.Contains(body, "timeout") {
+		t.Errorf("response body = %q, want it to mention 'timeout'", body)
 	}
 }
 
