@@ -1,7 +1,7 @@
-<h1 align="center">codex-converter</h1>
+<h1 align="center">codex-converter v1.0</h1>
 
 <p align="center">
-  <strong>让 Codex 支持所有 Chat Completions 兼容的模型</strong>
+  <strong>Let Codex work with any Chat Completions compatible model</strong>
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
 
 ---
 
-codex-converter is a lightweight proxy that enables Codex to work with any Chat Completions compatible LLM provider. Codex only supports the Responses API format, but most providers (DeepSeek, MiMo, Qwen, Ollama, etc.) only support Chat Completions. This converter bridges the gap seamlessly.
+codex-converter is a lightweight proxy that enables Codex to work with any Chat Completions compatible LLM provider. Codex speaks the Responses API, but most providers (DeepSeek, MiMo, Qwen, GLM, Moonshot, Ollama, etc.) only speak Chat Completions. This converter bridges the gap — with automatic model sync so you only edit one config file.
 
 ---
 
@@ -28,112 +28,133 @@ go install github.com/strings77wzq/codex-converter@latest
 codex-converter
 ```
 
-The first launch guides you through configuration:
-1. Enter your provider's Base URL
+First launch guides you through:
+1. Select your provider (DeepSeek, MiMo, Qwen, GLM, …)
 2. Enter your API Key
-3. Enter Model name (or press Enter for default)
+3. Choose a model
 
-That's it! The converter auto-configures Codex and starts the service.
+**That's it.** The converter auto-configures Codex and starts. Run `codex` and you're coding.
 
 ---
 
 ## How It Works
 
 ```
-Codex ──→ codex-converter ──→ Your LLM Provider
-         (Responses → Chat)   (DeepSeek/MiMo/Qwen/...)
+Codex ──Responses──▶ codex-converter :8080 ──Chat──▶ Your LLM Provider
+                                            Completions   (DeepSeek/MiMo/...)
+◀─Responses──        ◀──Chat──
 ```
 
-1. Codex sends requests in Responses API format
-2. codex-converter converts them to Chat Completions format
-3. Your provider processes the request
-4. codex-converter converts the response back to Responses format
-5. Codex receives the response seamlessly
+1. Codex speaks **Responses API** — sends requests, expects SSE events
+2. codex-converter translates to **Chat Completions** and forwards to your provider
+3. Provider responds (streaming or not) — converter translates back to Responses format
+4. Codex receives the response as if it were talking to a native Responses endpoint
 
 ---
 
 ## Features
 
-- ✅ **Text streaming** — Real-time token-by-token output
-- ✅ **Tool calls** — Full support for function calling (essential for Codex agent)
-- ✅ **Any provider** — Works with any Chat Completions compatible API
-- ✅ **Interactive setup** — First-run wizard, no manual config editing
-- ✅ **Auto-config Codex** — Automatically configures `~/.codex/config.toml`
-- ✅ **Single binary** — No dependencies, just one executable
+- ✅ **Text streaming** — Real-time token-by-token output with correct SSE event sequence
+- ✅ **Tool calls** — Full function calling support (essential for Codex agent)
+- ✅ **10+ providers built-in** — DeepSeek, MiMo, Qwen, GLM, Moonshot, Yi, Baichuan, MiniMax, Ollama, plus Custom
+- ✅ **Auto-sync model to Codex** — Change model in converter config, Codex picks it up on next converter restart
+- ✅ **`codex --model` switching** — Temporary model switches without editing any config file
+- ✅ **Intelligent config sync** — Won't overwrite your Codex settings when using other providers (e.g., GPT)
+- ✅ **Interactive setup wizard** — First-run guided configuration with connection testing and retry
+- ✅ **Single binary** — Zero runtime dependencies, `go install` ready
+- ✅ **Dual auth support** — `Authorization: Bearer` and `api-key` header
 
 ---
 
 ## Supported Providers
 
-Any provider with a Chat Completions compatible API works:
+| Provider | Auth Style | Example Models |
+|----------|-----------|----------------|
+| **DeepSeek** | Bearer | `deepseek-v4-pro`, `deepseek-v4-flash` |
+| **MiMo** | `api-key` header | `mimo-v2.5-pro` |
+| **Qwen** | Bearer | `qwen-max`, `qwen-plus`, `qwen-turbo` |
+| **GLM** | Bearer | `glm-4-plus`, `glm-4`, `glm-4-flash` |
+| **Moonshot** | Bearer | `moonshot-v1-128k`, `moonshot-v1-32k` |
+| **Yi** | Bearer | `yi-large`, `yi-medium` |
+| **Baichuan** | Bearer | `Baichuan4` |
+| **MiniMax** | Bearer | `abab6.5s-chat` |
+| **Ollama** | None (local) | Any local model |
+| **Custom** | Your choice | Your model |
 
-| Provider | Base URL | Notes |
-|----------|----------|-------|
-| **DeepSeek** | `https://api.deepseek.com` | `deepseek-v4-pro`, `deepseek-v4-flash` |
-| **MiMo** | `https://api.xiaomimimo.com` | `mimo-v2.5-pro`, uses `api-key` header |
-| **Qwen** | `https://dashscope.aliyuncs.com/compatible-mode` | `qwen-max`, `qwen-plus` |
-| **Ollama** | `http://localhost:11434/v1` | Local models, no API key needed |
-| **vLLM** | `http://localhost:8000/v1` | Self-hosted models |
-| **Any OpenAI-compatible** | Your provider's URL | Just fill in the details |
+Any OpenAI-compatible API works — just select "Custom" in the setup wizard.
 
 ---
 
 ## Configuration
 
-### First Run
-
-```bash
-codex-converter
-```
-
-Interactive wizard asks for:
-- **Base URL** — Your provider's API endpoint
-- **API Key** — Your authentication key
-- **Model** — Model name (default: `mimo-v2.5-pro`)
-
-### Subsequent Runs
-
-```bash
-codex-converter
-# Automatically loads config from ~/.codex-converter/config.toml
-```
-
-### Manual Config
-
-Edit `~/.codex-converter/config.toml`:
+### Converter Config (`~/.codex-converter/config.toml`)
 
 ```toml
-default_provider = "default"
+default_provider = "mimo"
 
 [server]
 port = 8080
 host = "127.0.0.1"
 
 [[providers]]
-name = "default"
+name = "mimo"
 base_url = "https://api.xiaomimimo.com"
 model = "mimo-v2.5-pro"
 api_key = "your-api-key"
 auth_style = "api_key_header"
+context_window = 1000000    # optional: syncs to Codex for correct compact behavior
+```
+
+### Model Sync (automatic)
+
+On startup, codex-converter intelligently syncs your model config to `~/.codex/config.toml`:
+
+| Codex `model_provider` state | Behavior |
+|---|---|
+| `"codex-converter"` | Updates `model`, `model_provider`, `context_window` (if set) |
+| Other value (e.g. `"codex"`) | Only updates the provider section — **your current provider choice is respected** |
+
+This means you can switch between GPT and MiMo freely without the converter overwriting your choice.
+
+### Switching Models
+
+**Permanent** — edit `~/.codex-converter/config.toml` → restart converter → `model` auto-syncs:
+```toml
+model = "mimo-v2.5-flash"   # changed from pro
+```
+
+**Temporary** — use Codex's `--model` flag (no restart, no config edit):
+```bash
+codex --model mimo-v2.5-flash
 ```
 
 ---
 
 ## Codex Integration
 
-After running `codex-converter`, it automatically adds this to `~/.codex/config.toml`:
+After running `codex-converter`, your `~/.codex/config.toml` is auto-configured:
 
 ```toml
+model = "mimo-v2.5-pro"
+model_provider = "codex-converter"
+
 [model_providers.codex-converter]
 name = "codex-converter"
 base_url = "http://127.0.0.1:8080"
 wire_api = "responses"
 ```
 
-Then just run Codex normally:
+Run Codex normally:
 
 ```bash
-codex --model mimo-v2.5-pro --model-provider codex-converter
+# Default (synced model)
+codex
+
+# Override model
+codex --model mimo-v2.5-flash
+
+# Use GPT instead (converter keeps running untouched)
+codex --model gpt-5.4-mini --model-provider codex
 ```
 
 ---
@@ -152,7 +173,7 @@ go build -o codex-converter .
 
 ```bash
 docker build -t codex-converter .
-docker run -p 8080:8080 codex-converter
+docker run -p 8080:8080 -v ~/.codex-converter:/root/.codex-converter codex-converter
 ```
 
 ---
@@ -163,10 +184,16 @@ docker run -p 8080:8080 codex-converter
 A: Codex only speaks Responses API, but most LLM providers only speak Chat Completions. This converter bridges the gap.
 
 **Q: Does it work with all Codex features?**
-A: Yes! Code generation, tool calls, streaming — everything works. Only OpenAI-specific built-in tools (web search, computer use) are not available.
+A: Yes — code generation, tool calls, streaming, multi-agent. OpenAI-specific built-in tools (web search, computer use) are not available.
+
+**Q: How do I switch between models?**
+A: For the default model, edit `model` in `~/.codex-converter/config.toml` and restart. For temporary switches, use `codex --model <name>` directly.
+
+**Q: Can I still use GPT with Codex?**
+A: Yes. Just run `codex --model-provider codex` when you want GPT. The converter won't overwrite your Codex settings when you've chosen a different provider.
 
 **Q: Is my API key safe?**
-A: The key is stored locally in `~/.codex-converter/config.toml` and never leaves your machine except when forwarding requests to your provider.
+A: The key is stored locally in `~/.codex-converter/config.toml` and only sent to your configured provider. It is never transmitted anywhere else.
 
 ---
 
