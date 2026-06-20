@@ -68,6 +68,17 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to load config: %v", err)
 		}
+
+		// Show startup banner for existing config
+		fmt.Println()
+		fmt.Println("════════════════════════════════════════════════════")
+		if len(cfg.Providers) > 0 {
+			fmt.Printf("  Provider: %s\n", cfg.DefaultProvider)
+			fmt.Printf("  Base URL: %s\n", cfg.Providers[0].BaseURL)
+			fmt.Printf("  Model:    %s\n", cfg.Providers[0].Model)
+		}
+		fmt.Println("════════════════════════════════════════════════════")
+		fmt.Println()
 	}
 
 	if *port > 0 {
@@ -78,10 +89,11 @@ func main() {
 	handler := proxy.NewHandler(cfg)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
-	log.Printf("codex-converter listening on %s", addr)
-	if len(cfg.Providers) > 0 {
-		log.Printf("provider: %s (%s)", cfg.DefaultProvider, cfg.Providers[0].BaseURL)
-	}
+	fmt.Printf("  🚀 服务已启动 %s\n", addr)
+	fmt.Println()
+	fmt.Println("  现在你可以直接运行: codex")
+	fmt.Println("  按 Ctrl+C 停止服务")
+	fmt.Println()
 
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("server error: %v", err)

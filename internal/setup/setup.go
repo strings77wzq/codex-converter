@@ -20,6 +20,17 @@ const (
 	codexConfig    = "config.toml"
 )
 
+// Colors
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+	colorCyan   = "\033[36m"
+	colorBold   = "\033[1m"
+)
+
 type SetupConfig struct {
 	Server struct {
 		Port int    `toml:"port"`
@@ -37,35 +48,75 @@ type ProviderConfig struct {
 	AuthStyle string `toml:"auth_style"`
 }
 
+func printBanner() {
+	fmt.Println()
+	fmt.Printf("%s╔══════════════════════════════════════════════════╗%s\n", colorCyan, colorReset)
+	fmt.Printf("%s║%s        %scodex-converter%s v1.0                  %s║%s\n", colorCyan, colorReset, colorBold, colorReset, colorCyan, colorReset)
+	fmt.Printf("%s║%s    让 Codex 支持所有 Chat Completions 模型      %s║%s\n", colorCyan, colorReset, colorCyan, colorReset)
+	fmt.Printf("%s╚══════════════════════════════════════════════════╝%s\n", colorCyan, colorReset)
+	fmt.Println()
+}
+
+func printStep(step int, total int, msg string) {
+	fmt.Printf("%s[%d/%d]%s %s\n", colorYellow, step, total, colorReset, msg)
+}
+
+func printSuccess(msg string) {
+	fmt.Printf("%s✓ %s%s\n", colorGreen, msg, colorReset)
+}
+
+func printInfo(msg string) {
+	fmt.Printf("%s→ %s%s\n", colorBlue, msg, colorReset)
+}
+
+func printError(msg string) {
+	fmt.Printf("%s✗ %s%s\n", colorRed, msg, colorReset)
+}
+
 func RunSetup() (*SetupConfig, error) {
 	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Println("👋 欢迎使用 codex-converter")
+	printBanner()
+
+	fmt.Printf("%s 首次运行，开始配置...%s\n", colorCyan, colorReset)
 	fmt.Println()
 
-	// Get base URL
-	fmt.Print("Base URL (例如 https://api.xiaomimimo.com): ")
+	// Step 1: Base URL
+	printStep(1, 3, "输入你的 LLM Provider 信息")
+	fmt.Println()
+	fmt.Printf("  %sBase URL%s (例如 https://api.xiaomimimo.com): ", colorBold, colorReset)
 	baseURL, _ := reader.ReadString('\n')
 	baseURL = strings.TrimSpace(baseURL)
 	if baseURL == "" {
 		return nil, fmt.Errorf("Base URL 不能为空")
 	}
+	printSuccess(fmt.Sprintf("Base URL: %s", baseURL))
+	fmt.Println()
 
-	// Get API key
-	fmt.Print("API Key: ")
+	// Step 2: API Key
+	fmt.Printf("  %sAPI Key%s: ", colorBold, colorReset)
 	apiKey, _ := reader.ReadString('\n')
 	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" {
 		return nil, fmt.Errorf("API Key 不能为空")
 	}
+	// Mask key for display
+	maskedKey := apiKey
+	if len(apiKey) > 8 {
+		maskedKey = apiKey[:4] + "****" + apiKey[len(apiKey)-4:]
+	}
+	printSuccess(fmt.Sprintf("API Key: %s", maskedKey))
+	fmt.Println()
 
-	// Get model with default
-	fmt.Printf("Model (回车默认 %s): ", defaultModel)
+	// Step 3: Model
+	fmt.Printf("  %sModel%s (回车默认 %s): ", colorBold, colorReset, defaultModel)
 	model, _ := reader.ReadString('\n')
 	model = strings.TrimSpace(model)
 	if model == "" {
 		model = defaultModel
 	}
+	printSuccess(fmt.Sprintf("Model: %s", model))
+	fmt.Println()
 
 	// Detect auth style based on URL
 	authStyle := "bearer"
@@ -95,27 +146,31 @@ func RunSetup() (*SetupConfig, error) {
 	}
 
 	// Save config
+	printInfo("保存配置...")
 	if err := saveConfig(cfg); err != nil {
-		return nil, fmt.Errorf("保存配置失败: %v", err)
+		printError(fmt.Sprintf("保存配置失败: %v", err))
+		return nil, err
 	}
+	printSuccess(fmt.Sprintf("配置已保存到 ~/.codex-converter/config.toml"))
 
 	// Configure Codex
+	printInfo("配置 Codex...")
 	if err := configureCodex(baseURL); err != nil {
-		return nil, fmt.Errorf("配置 Codex 失败: %v", err)
+		printError(fmt.Sprintf("配置 Codex 失败: %v", err))
+		return nil, err
 	}
+	printSuccess("Codex 已自动配置 (~/.codex/config.toml)")
 
-	// Print success
 	fmt.Println()
-	fmt.Println("✅ 配置完成！")
-	fmt.Printf("   Provider: %s\n", "default")
-	fmt.Printf("   Base URL: %s\n", baseURL)
-	fmt.Printf("   Model: %s\n", model)
+	fmt.Println("════════════════════════════════════════════════════")
 	fmt.Println()
-	fmt.Printf("🚀 服务已启动 (127.0.0.1:%d)\n", defaultPort)
-	fmt.Println("📝 Codex 已自动配置")
+	fmt.Printf("  %s🚀 服务已启动 %s(127.0.0.1:%d)%s\n", colorGreen, colorBold, defaultPort, colorReset)
 	fmt.Println()
-	fmt.Println("现在你可以直接运行: codex")
-	fmt.Println("按 Ctrl+C 停止服务")
+	fmt.Println("  %s现在你可以直接运行:%s", colorBold, colorReset)
+	fmt.Println()
+	fmt.Printf("    %scodex%s\n", colorCyan, colorReset)
+	fmt.Println()
+	fmt.Println("  %s按 Ctrl+C 停止服务%s", colorYellow, colorReset)
 	fmt.Println()
 
 	return cfg, nil
