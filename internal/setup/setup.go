@@ -553,6 +553,7 @@ func saveConfig(cfg *SetupConfig) error {
 	}
 
 	path := filepath.Join(dir, configFile)
+	// #nosec G304 — path is filepath.Join(homeDir, ".codex-converter", "config.toml"), not user input
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -579,6 +580,7 @@ func configureCodex(modelName string, contextWindow int) error {
 
 	// Read existing config or create new
 	content := ""
+	// #nosec G304 — codexPath is filepath.Join(homeDir, ".codex", "config.toml"), not user input
 	if data, err := os.ReadFile(codexPath); err == nil {
 		content = string(data)
 	}

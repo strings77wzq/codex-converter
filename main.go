@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/codex-converter/internal/config"
 	"github.com/codex-converter/internal/proxy"
@@ -100,7 +101,14 @@ func main() {
 	fmt.Println("  按 Ctrl+C 停止服务")
 	fmt.Println()
 
-	if err := http.ListenAndServe(addr, handler); err != nil {
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      handler,
+		ReadTimeout:  5 * time.Minute,  // generous for streaming requests
+		WriteTimeout: 10 * time.Minute, // generous for streaming responses
+		IdleTimeout:  2 * time.Minute,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }

@@ -68,6 +68,7 @@ func SyncCodexConfig(cfg *Config) error {
 
 	// Read existing or start fresh
 	var lines []string
+	// #nosec G304 — codexPath is filepath.Join(homeDir, ".codex", "config.toml"), not user input
 	if data, err := os.ReadFile(codexPath); err == nil {
 		lines = splitLines(string(data))
 	} else if !os.IsNotExist(err) {
