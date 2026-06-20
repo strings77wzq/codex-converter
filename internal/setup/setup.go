@@ -605,6 +605,7 @@ base_url = "http://127.0.0.1:8080"
 wire_api = "responses"
 `, modelName, contextWindow, int(float64(contextWindow)*0.9))
 
+	// #nosec G703 — codexPath is filepath.Join(".codex", "config.toml"), not user input
 	return os.WriteFile(codexPath, []byte(content+codexAdditions), 0600)
 }
 
