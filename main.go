@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"time"
 
 	"github.com/strings77wzq/codex-converter/internal/config"
@@ -21,7 +22,11 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println("codex-converter v1.0.5")
+		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+			fmt.Println("codex-converter", info.Main.Version)
+		} else {
+			fmt.Println("codex-converter (devel)")
+		}
 		return
 	}
 
