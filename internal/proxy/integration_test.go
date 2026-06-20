@@ -49,9 +49,9 @@ func TestIntegration_MockBackend(t *testing.T) {
 			// Non-streaming response
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":      "chatcmpl-mock",
-				"object":  "chat.completion",
-				"model":   req.Model,
+				"id":     "chatcmpl-mock",
+				"object": "chat.completion",
+				"model":  req.Model,
 				"choices": []map[string]interface{}{
 					{
 						"index": 0,

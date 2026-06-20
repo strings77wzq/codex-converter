@@ -3,13 +3,13 @@ package types
 // Chat Completions API types (what we send to providers)
 
 type ChatRequest struct {
-	Model       string        `json:"model"`
-	Messages    []ChatMessage `json:"messages"`
-	Tools       []ChatTool    `json:"tools,omitempty"`
-	Stream      bool          `json:"stream,omitempty"`
-	Temperature *float64      `json:"temperature,omitempty"`
-	MaxTokens   *int          `json:"max_tokens,omitempty"`
-	ResponseFormat interface{} `json:"response_format,omitempty"`
+	Model          string        `json:"model"`
+	Messages       []ChatMessage `json:"messages"`
+	Tools          []ChatTool    `json:"tools,omitempty"`
+	Stream         bool          `json:"stream,omitempty"`
+	Temperature    *float64      `json:"temperature,omitempty"`
+	MaxTokens      *int          `json:"max_tokens,omitempty"`
+	ResponseFormat interface{}   `json:"response_format,omitempty"`
 }
 
 type ChatMessage struct {

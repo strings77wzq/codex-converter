@@ -50,9 +50,9 @@ func TestHandler_ResponsesEndpoint(t *testing.T) {
 		// Return Chat Completions response
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"id":      "chatcmpl-test",
-			"object":  "chat.completion",
-			"model":   "deepseek-v4-pro",
+			"id":     "chatcmpl-test",
+			"object": "chat.completion",
+			"model":  "deepseek-v4-pro",
 			"choices": []map[string]interface{}{
 				{
 					"index": 0,

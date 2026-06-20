@@ -9,8 +9,8 @@ import (
 func TestConvertResponse_TextContent(t *testing.T) {
 	finishReason := "stop"
 	chat := &types.ChatResponse{
-		ID:     "chatcmpl-123",
-		Model:  "deepseek-v4-pro",
+		ID:    "chatcmpl-123",
+		Model: "deepseek-v4-pro",
 		Choices: []types.ChatChoice{
 			{
 				Index: 0,
@@ -77,8 +77,8 @@ func TestConvertResponse_TextContent(t *testing.T) {
 func TestConvertResponse_ToolCall(t *testing.T) {
 	finishReason := "tool_calls"
 	chat := &types.ChatResponse{
-		ID:     "chatcmpl-456",
-		Model:  "deepseek-v4-pro",
+		ID:    "chatcmpl-456",
+		Model: "deepseek-v4-pro",
 		Choices: []types.ChatChoice{
 			{
 				Index: 0,

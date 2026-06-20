@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	defaultPort  = 8080
-	defaultHost  = "127.0.0.1"
-	configDir    = ".codex-converter"
-	configFile   = "config.toml"
+	defaultPort    = 8080
+	defaultHost    = "127.0.0.1"
+	configDir      = ".codex-converter"
+	configFile     = "config.toml"
 	codexConfigDir = ".codex"
 	codexConfig    = "config.toml"
 )
@@ -35,16 +35,16 @@ const (
 
 // Known providers with their models
 type ProviderInfo struct {
-	Name       string
-	BaseURL    string
-	AuthStyle  string // "bearer" or "api_key_header"
-	Models     []ModelInfo
+	Name      string
+	BaseURL   string
+	AuthStyle string // "bearer" or "api_key_header"
+	Models    []ModelInfo
 }
 
 type ModelInfo struct {
-	Name           string
-	ContextWindow  int  // in tokens
-	Description    string
+	Name          string
+	ContextWindow int // in tokens
+	Description   string
 }
 
 var knownProviders = []ProviderInfo{
@@ -152,10 +152,10 @@ type ProviderConfig struct {
 }
 
 type CodexConfig struct {
-	ModelContextWindow        int  `toml:"model_context_window"`
-	ModelAutoCompactTokenLimit int `toml:"model_auto_compact_token_limit"`
-	Model                     string `toml:"model"`
-	ModelProvider             string `toml:"model_provider"`
+	ModelContextWindow         int    `toml:"model_context_window"`
+	ModelAutoCompactTokenLimit int    `toml:"model_auto_compact_token_limit"`
+	Model                      string `toml:"model"`
+	ModelProvider              string `toml:"model_provider"`
 }
 
 func printBanner() {
@@ -557,7 +557,7 @@ func saveConfig(cfg *SetupConfig) error {
 	}
 
 	dir := filepath.Join(homeDir, configDir)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return err
 	}
 
@@ -580,7 +580,7 @@ func configureCodex(modelName string, contextWindow int) error {
 
 	// Ensure codex config dir exists
 	codexDir := filepath.Join(homeDir, codexConfigDir)
-	if err := os.MkdirAll(codexDir, 0755); err != nil {
+	if err := os.MkdirAll(codexDir, 0750); err != nil {
 		return err
 	}
 
@@ -612,7 +612,7 @@ base_url = "http://127.0.0.1:8080"
 wire_api = "responses"
 `, modelName, contextWindow, int(float64(contextWindow)*0.9))
 
-	return os.WriteFile(codexPath, []byte(content+codexAdditions), 0644)
+	return os.WriteFile(codexPath, []byte(content+codexAdditions), 0600)
 }
 
 func IsFirstRun() bool {

@@ -273,11 +273,11 @@ func TestLoadConfig_APIKeyFromEnv(t *testing.T) {
 	cfg := &Config{
 		Providers: []Provider{
 			{
-				Name:       "test",
-				BaseURL:    "http://localhost",
-				Model:      "test",
-				APIKeyEnv:  "TEST_API_KEY",
-				AuthStyle:  "bearer",
+				Name:      "test",
+				BaseURL:   "http://localhost",
+				Model:     "test",
+				APIKeyEnv: "TEST_API_KEY",
+				AuthStyle: "bearer",
 			},
 		},
 	}

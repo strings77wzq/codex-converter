@@ -124,7 +124,7 @@ func TestConvertStream_ToolCall(t *testing.T) {
 	expectedTypes := []string{
 		"response.created",
 		"response.output_item.added",
-		"response.output_item.added",        // tool call item added
+		"response.output_item.added", // tool call item added
 		"response.function_call_arguments.delta",
 		"response.function_call_arguments.delta",
 		"response.function_call_arguments.delta",

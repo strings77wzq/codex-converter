@@ -137,7 +137,7 @@ func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 	if resp.StatusCode != http.StatusOK {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
+		_, _ = io.Copy(w, resp.Body)
 		return
 	}
 
@@ -162,7 +162,7 @@ func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(respAPI)
+	_ = json.NewEncoder(w).Encode(respAPI)
 }
 
 func (h *Handler) handleStreamingResponse(w http.ResponseWriter, resp *http.Response, req types.ResponsesRequest) {

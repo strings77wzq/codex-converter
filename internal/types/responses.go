@@ -3,14 +3,14 @@ package types
 // Responses API types (what Codex sends)
 
 type ResponsesRequest struct {
-	Model       string          `json:"model"`
-	Input       interface{}     `json:"input"`       // string or []InputItem
+	Model        string         `json:"model"`
+	Input        interface{}    `json:"input"` // string or []InputItem
 	Instructions string         `json:"instructions,omitempty"`
-	Tools       []ResponseTool  `json:"tools,omitempty"`
-	Stream      bool            `json:"stream,omitempty"`
-	Temperature *float64        `json:"temperature,omitempty"`
-	MaxTokens   *int            `json:"max_output_tokens,omitempty"`
-	Text        *TextConfig     `json:"text,omitempty"`
+	Tools        []ResponseTool `json:"tools,omitempty"`
+	Stream       bool           `json:"stream,omitempty"`
+	Temperature  *float64       `json:"temperature,omitempty"`
+	MaxTokens    *int           `json:"max_output_tokens,omitempty"`
+	Text         *TextConfig    `json:"text,omitempty"`
 }
 
 type InputItem struct {
@@ -31,8 +31,8 @@ type TextConfig struct {
 }
 
 type TextFormat struct {
-	Type       string      `json:"type"`
-	Name       string      `json:"name,omitempty"`
-	Strict     bool        `json:"strict,omitempty"`
-	Schema     interface{} `json:"schema,omitempty"`
+	Type   string      `json:"type"`
+	Name   string      `json:"name,omitempty"`
+	Strict bool        `json:"strict,omitempty"`
+	Schema interface{} `json:"schema,omitempty"`
 }

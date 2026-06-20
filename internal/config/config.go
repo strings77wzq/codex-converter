@@ -117,11 +117,11 @@ wire_api = "responses"`
 	}
 
 	// Ensure directory exists
-	if err := os.MkdirAll(codexDir, 0755); err != nil {
+	if err := os.MkdirAll(codexDir, 0750); err != nil {
 		return err
 	}
 
-	return os.WriteFile(codexPath, []byte(joinLines(lines)), 0644)
+	return os.WriteFile(codexPath, []byte(joinLines(lines)), 0600)
 }
 
 // splitLines splits text into lines, preserving empty lines.

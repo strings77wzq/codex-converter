@@ -17,7 +17,7 @@ type chatStreamChunk struct {
 	Choices []struct {
 		Index int `json:"index"`
 		Delta struct {
-			Role      string `json:"role"`
+			Role      string  `json:"role"`
 			Content   *string `json:"content"`
 			ToolCalls []struct {
 				Index    int    `json:"index"`
