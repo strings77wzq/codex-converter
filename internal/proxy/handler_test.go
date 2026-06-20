@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -147,6 +148,44 @@ func TestHandler_ResponsesEndpoint(t *testing.T) {
 	}
 	if resp.Usage.InputTokens != 10 {
 		t.Errorf("usage.input_tokens = %d, want 10", resp.Usage.InputTokens)
+	}
+}
+
+func TestHandler_StreamingLargeLine(t *testing.T) {
+	bigContent := strings.Repeat("x", 100*1024) // > 64KB single SSE line
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "data: {\"id\":\"chatcmpl-big\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"}}]}\n")
+		fmt.Fprintf(w, "data: {\"id\":\"chatcmpl-big\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"%s\"}}]}\n", bigContent)
+		fmt.Fprintf(w, "data: {\"id\":\"chatcmpl-big\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n")
+		fmt.Fprintf(w, "data: [DONE]\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}))
+	defer backend.Close()
+
+	cfg := &config.Config{
+		Providers: []config.Provider{
+			{Name: "test", BaseURL: backend.URL, Model: "deepseek-v4-pro", AuthStyle: "bearer"},
+		},
+		DefaultProvider: "test",
+	}
+	handler := NewHandler(cfg)
+
+	reqBody := `{"model":"deepseek-v4-pro","input":"Hi","stream":true}`
+	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if strings.Contains(body, "event: error") {
+		t.Fatalf("stream produced an error event (line buffer too small)")
+	}
+	if !strings.Contains(body, bigContent) {
+		t.Fatal("large content was truncated or missing from the stream")
 	}
 }
 

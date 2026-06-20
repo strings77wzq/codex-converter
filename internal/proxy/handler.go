@@ -177,6 +177,7 @@ func (h *Handler) handleStreamingResponse(w http.ResponseWriter, resp *http.Resp
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // initial 64KB, max 1MB per SSE line
 	events := convert.ConvertStream(scanner)
 
 	for event := range events {
