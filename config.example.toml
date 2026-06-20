@@ -1,0 +1,27 @@
+default_provider = "deepseek"
+
+[server]
+port = 8080
+host = "127.0.0.1"
+
+# Add any Chat Completions compatible provider here
+# Just fill: name, base_url, model, api_key_env
+
+[[providers]]
+name = "deepseek"
+base_url = "https://api.deepseek.com"
+model = "deepseek-v4-pro"
+api_key_env = "DEEPSEEK_API_KEY"
+
+[[providers]]
+name = "mimo"
+base_url = "https://api.xiaomimimo.com"
+model = "mimo-v2.5-pro"
+api_key_env = "MIMO_API_KEY"
+auth_style = "api_key_header"
+
+# [[providers]]
+# name = "your-provider"
+# base_url = "https://your-api.com"
+# model = "your-model"
+# api_key_env = "YOUR_API_KEY"
