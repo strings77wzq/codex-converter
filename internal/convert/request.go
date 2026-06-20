@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/codex-converter/internal/types"
+	"github.com/strings77wzq/codex-converter/internal/types"
 )
 
 func ConvertRequest(req *types.ResponsesRequest) (*types.ChatRequest, error) {

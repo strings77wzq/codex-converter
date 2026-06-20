@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codex-converter/internal/config"
+	"github.com/strings77wzq/codex-converter/internal/config"
 )
 
 func TestHandler_ResponsesEndpoint(t *testing.T) {

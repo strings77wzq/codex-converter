@@ -1,5 +1,5 @@
-module github.com/codex-converter
+module github.com/strings77wzq/codex-converter
 
 go 1.25.11
 
-require github.com/BurntSushi/toml v1.6.0 // indirect
+require github.com/BurntSushi/toml v1.6.0

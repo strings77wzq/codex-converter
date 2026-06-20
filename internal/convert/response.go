@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/codex-converter/internal/types"
+	"github.com/strings77wzq/codex-converter/internal/types"
 )
 
 func ConvertResponse(chat *types.ChatResponse) (*types.ResponsesResponse, error) {

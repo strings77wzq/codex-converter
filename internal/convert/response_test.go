@@ -3,7 +3,7 @@ package convert
 import (
 	"testing"
 
-	"github.com/codex-converter/internal/types"
+	"github.com/strings77wzq/codex-converter/internal/types"
 )
 
 func TestConvertResponse_TextContent(t *testing.T) {

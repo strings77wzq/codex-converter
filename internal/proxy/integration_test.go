@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/codex-converter/internal/config"
+	"github.com/strings77wzq/codex-converter/internal/config"
 )
 
 func TestIntegration_MockBackend(t *testing.T) {

@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/codex-converter/internal/config"
-	"github.com/codex-converter/internal/proxy"
-	"github.com/codex-converter/internal/setup"
+	"github.com/strings77wzq/codex-converter/internal/config"
+	"github.com/strings77wzq/codex-converter/internal/proxy"
+	"github.com/strings77wzq/codex-converter/internal/setup"
 )
 
 func main() {

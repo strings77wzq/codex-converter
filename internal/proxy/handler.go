@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codex-converter/internal/config"
-	"github.com/codex-converter/internal/convert"
-	"github.com/codex-converter/internal/types"
+	"github.com/strings77wzq/codex-converter/internal/config"
+	"github.com/strings77wzq/codex-converter/internal/convert"
+	"github.com/strings77wzq/codex-converter/internal/types"
 )
 
 type Handler struct {
