@@ -241,15 +241,6 @@ func testConnection(baseURL, apiKey, model, authStyle string) error {
 	return nil
 }
 
-func detectProvider(baseURL string) *ProviderInfo {
-	for _, p := range knownProviders {
-		if strings.Contains(baseURL, p.BaseURL) {
-			return &p
-		}
-	}
-	return nil
-}
-
 func RunSetup() (*SetupConfig, error) {
 	reader := bufio.NewReader(os.Stdin)
 
@@ -302,7 +293,7 @@ func RunSetup() (*SetupConfig, error) {
 		baseURL, _ = reader.ReadString('\n')
 		baseURL = strings.TrimSpace(baseURL)
 		if baseURL == "" {
-			return nil, fmt.Errorf("Base URL 不能为空")
+			return nil, fmt.Errorf("base URL 不能为空")
 		}
 		printSuccess(fmt.Sprintf("Base URL: %s", baseURL))
 	} else {
@@ -474,7 +465,7 @@ func RunSetup() (*SetupConfig, error) {
 			baseURL, _ = reader.ReadString('\n')
 			baseURL = strings.TrimSpace(baseURL)
 			if baseURL == "" {
-				return nil, fmt.Errorf("Base URL 不能为空")
+				return nil, fmt.Errorf("base URL 不能为空")
 			}
 			printSuccess(fmt.Sprintf("Base URL: %s", baseURL))
 
