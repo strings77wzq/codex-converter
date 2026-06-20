@@ -41,7 +41,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == "/health" && r.Method == "GET":
 		h.handleHealth(w, r)
-	case r.URL.Path == "/v1/responses" && r.Method == "POST":
+	case r.URL.Path == "/v1/responses" && r.Method == "POST",
+		r.URL.Path == "/responses" && r.Method == "POST":
 		h.handleResponses(w, r)
 	default:
 		http.Error(w, "not found", http.StatusNotFound)
