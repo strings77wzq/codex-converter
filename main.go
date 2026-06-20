@@ -17,7 +17,13 @@ import (
 func main() {
 	configPath := flag.String("config", "", "path to config file")
 	port := flag.Int("port", 0, "server port (overrides config)")
+	showVersion := flag.Bool("version", false, "show version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("codex-converter v1.0.2")
+		return
+	}
 
 	var cfg *config.Config
 	var err error
