@@ -424,8 +424,8 @@ func RunSetup() (*SetupConfig, error) {
 		},
 		Providers: []ProviderConfig{
 			{
-				Name:      selectedProvider.Name,
-				BaseURL:   baseURL,
+				Name:    selectedProvider.Name,
+				BaseURL: cleanBaseURL(baseURL),
 				Model:     model.Name,
 				APIKey:    apiKey,
 				AuthStyle: authStyle,
@@ -618,4 +618,15 @@ func IsFirstRun() bool {
 	path := filepath.Join(homeDir, configDir, configFile)
 	_, err = os.Stat(path)
 	return os.IsNotExist(err)
+}
+
+// cleanBaseURL normalizes a user-supplied base URL by stripping common path
+// suffixes (/v1, /v1/chat/completions, /chat/completions) so the handler can
+// safely append "/v1/chat/completions" without duplication.
+func cleanBaseURL(raw string) string {
+	u := strings.TrimRight(raw, "/")
+	u = strings.TrimSuffix(u, "/v1/chat/completions")
+	u = strings.TrimSuffix(u, "/v1")
+	u = strings.TrimSuffix(u, "/chat/completions")
+	return u
 }
