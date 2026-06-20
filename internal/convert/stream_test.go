@@ -7,6 +7,41 @@ import (
 	"testing"
 )
 
+func TestConvertStream_ScannerError(t *testing.T) {
+	// One data line far larger than bufio's default 64KB token limit.
+	huge := strings.Repeat("a", 100*1024)
+	input := `data: {"id":"chatcmpl-err","choices":[{"index":0,"delta":{"content":"` + huge + `"}}]}`
+
+	scanner := bufio.NewScanner(strings.NewReader(input)) // default 64KB buffer
+	events := ConvertStream(scanner)
+
+	var got []StreamEvent
+	for ev := range events {
+		got = append(got, ev)
+	}
+
+	if len(got) == 0 {
+		t.Fatal("expected at least one event, got none")
+	}
+	last := got[len(got)-1]
+	if last.Type != "error" {
+		t.Fatalf("last event type = %q, want %q (scanner error must be surfaced, not swallowed)", last.Type, "error")
+	}
+	var payload struct {
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(last.Data), &payload); err != nil {
+		t.Fatalf("error event Data is not valid JSON: %v\nData: %s", err, last.Data)
+	}
+	if payload.Type != "error" {
+		t.Errorf("payload.type = %q, want %q", payload.Type, "error")
+	}
+	if payload.Message == "" {
+		t.Error("payload.message is empty, want the scanner error text")
+	}
+}
+
 func TestConvertStream_TextDelta(t *testing.T) {
 	input := strings.Join([]string{
 		`data: {"id":"chatcmpl-123","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,

@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/codex-converter/internal/config"
 	"github.com/codex-converter/internal/convert"
@@ -16,11 +18,23 @@ import (
 )
 
 type Handler struct {
-	cfg *config.Config
+	cfg    *config.Config
+	client *http.Client
 }
 
 func NewHandler(cfg *config.Config) *Handler {
-	return &Handler{cfg: cfg}
+	return &Handler{
+		cfg: cfg,
+		client: &http.Client{
+			Transport: &http.Transport{
+				DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ResponseHeaderTimeout: 30 * time.Second,
+				IdleConnTimeout:       90 * time.Second,
+				// No client.Timeout: body read (streaming) is intentionally unbounded.
+			},
+		},
+	}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +92,7 @@ func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	backendURL := strings.TrimRight(provider.BaseURL, "/") + "/v1/chat/completions"
-	reqBackend, err := http.NewRequest("POST", backendURL, bytes.NewReader(chatJSON))
+	reqBackend, err := http.NewRequestWithContext(r.Context(), "POST", backendURL, bytes.NewReader(chatJSON))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("backend request error: %v", err), http.StatusInternalServerError)
 		return
@@ -112,7 +126,7 @@ func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute request
-	resp, err := http.DefaultClient.Do(reqBackend)
+	resp, err := h.client.Do(reqBackend)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("backend error: %v", err), http.StatusBadGateway)
 		return
@@ -163,6 +177,7 @@ func (h *Handler) handleStreamingResponse(w http.ResponseWriter, resp *http.Resp
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // initial 64KB, max 1MB per SSE line
 	events := convert.ConvertStream(scanner)
 
 	for event := range events {

@@ -210,6 +210,13 @@ func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
 				}
 			}
 		}
+
+		if err := scanner.Err(); err != nil {
+			ch <- StreamEvent{
+				Type: "error",
+				Data: fmt.Sprintf(`{"type":"error","message":"%s"}`, escapeJSON(err.Error())),
+			}
+		}
 	}()
 
 	return ch
