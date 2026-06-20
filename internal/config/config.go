@@ -16,6 +16,7 @@ type Provider struct {
 	Name       string `toml:"name"`
 	BaseURL    string `toml:"base_url"`
 	Model      string `toml:"model"`
+	APIKey     string `toml:"api_key"`
 	APIKeyEnv  string `toml:"api_key_env"`
 	AuthStyle  string `toml:"auth_style"`
 }
@@ -54,6 +55,13 @@ func (c *Config) GetAPIKey(providerIndex int) (string, error) {
 	}
 
 	p := c.Providers[providerIndex]
+
+	// Check direct API key first
+	if p.APIKey != "" {
+		return p.APIKey, nil
+	}
+
+	// Fall back to environment variable
 	if p.APIKeyEnv == "" {
 		return "", nil
 	}

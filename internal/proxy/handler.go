@@ -86,11 +86,17 @@ func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 
 	reqBackend.Header.Set("Content-Type", "application/json")
 
-	// Get API key: first from request header, then from env var
+	// Get API key: first from request header, then from config, then from env var
 	apiKey := r.Header.Get("Authorization")
-	if apiKey == "" && provider.APIKeyEnv != "" {
-		if envKey := os.Getenv(provider.APIKeyEnv); envKey != "" {
-			apiKey = "Bearer " + envKey
+	if apiKey == "" {
+		// Try to get from config (direct API key)
+		if provider.APIKey != "" {
+			apiKey = "Bearer " + provider.APIKey
+		} else if provider.APIKeyEnv != "" {
+			// Fall back to environment variable
+			if envKey := os.Getenv(provider.APIKeyEnv); envKey != "" {
+				apiKey = "Bearer " + envKey
+			}
 		}
 	}
 
