@@ -82,16 +82,16 @@ Not in scope (future):
 ## [S7] File Structure
 
 ```
-cmd/server/main.go
+main.go
 internal/config/config.go
-internal/proxy/handler.go
-internal/proxy/client.go
+internal/proxy/handler.go        # client/forwarding inlined (no separate client.go)
 internal/convert/request.go
 internal/convert/response.go
-internal/convert/stream.go
-internal/convert/tools.go
+internal/convert/stream.go       # tool-call handling inlined (no separate tools.go)
 internal/types/responses.go
+internal/types/responses_response.go
 internal/types/chat.go
+internal/setup/setup.go
 config.example.toml
 Dockerfile
 ```

@@ -143,7 +143,7 @@ codex --model mimo-v2.5-pro --model-provider codex-converter
 ```bash
 git clone https://github.com/strings77wzq/codex-converter.git
 cd codex-converter
-go build -o codex-converter ./cmd/server
+go build -o codex-converter .
 ```
 
 ---
