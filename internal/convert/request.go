@@ -77,7 +77,7 @@ func convertInput(input interface{}) ([]types.ChatMessage, error) {
 
 			msg := types.ChatMessage{
 				Role:    getString(itemMap, "role"),
-				Content: itemMap["content"],
+				Content: convertContent(itemMap["content"]),
 			}
 			if msg.Role != "" {
 				messages = append(messages, msg)
@@ -87,6 +87,35 @@ func convertInput(input interface{}) ([]types.ChatMessage, error) {
 
 	default:
 		return nil, fmt.Errorf("unsupported input type: %T", input)
+	}
+}
+
+// convertContent recursively converts Responses API content blocks to Chat Completions
+// format. Key mapping: input_text → text (the only difference in content block types).
+func convertContent(content interface{}) interface{} {
+	switch v := content.(type) {
+	case string:
+		return v
+	case []interface{}:
+		blocks := make([]interface{}, 0, len(v))
+		for _, block := range v {
+			blockMap, ok := block.(map[string]interface{})
+			if !ok {
+				blocks = append(blocks, block)
+				continue
+			}
+			// Convert input_text → text for Chat Completions compatibility
+			if typeVal, ok := blockMap["type"].(string); ok && typeVal == "input_text" {
+				blockMap = map[string]interface{}{
+					"type": "text",
+					"text": blockMap["text"],
+				}
+			}
+			blocks = append(blocks, blockMap)
+		}
+		return blocks
+	default:
+		return content
 	}
 }
 
