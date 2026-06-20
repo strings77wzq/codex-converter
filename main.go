@@ -21,7 +21,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println("codex-converter v1.0.3")
+		fmt.Println("codex-converter v1.0.5")
 		return
 	}
 
