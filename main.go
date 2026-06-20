@@ -85,6 +85,11 @@ func main() {
 		cfg.Server.Port = *port
 	}
 
+	// Sync model config to Codex (non-fatal)
+	if err := config.SyncCodexConfig(cfg); err != nil {
+		log.Printf("sync codex config: %v", err)
+	}
+
 	// Create handler with API key from setup config
 	handler := proxy.NewHandler(cfg)
 

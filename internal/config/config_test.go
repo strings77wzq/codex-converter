@@ -108,6 +108,163 @@ api_key_env = "TEST_KEY"
 	}
 }
 
+func TestSyncCodexConfig_CreatesNew(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	cfg := &Config{
+		DefaultProvider: "mimo",
+		Providers: []Provider{
+			{Name: "mimo", Model: "mimo-v2.5-pro", ContextWindow: 1000000},
+		},
+	}
+
+	if err := SyncCodexConfig(cfg); err != nil {
+		t.Fatalf("SyncCodexConfig() error = %v", err)
+	}
+
+	// Verify file was created with correct content
+	codexPath := homeDir + "/.codex/config.toml"
+	data, err := os.ReadFile(codexPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", codexPath, err)
+	}
+	content := string(data)
+
+	if !contains(content, `model = "mimo-v2.5-pro"`) {
+		t.Error("missing model field")
+	}
+	if !contains(content, `model_provider = "codex-converter"`) {
+		t.Error("missing model_provider field")
+	}
+	if !contains(content, `model_context_window = 1000000`) {
+		t.Error("missing model_context_window field")
+	}
+	if !contains(content, `[model_providers.codex-converter]`) {
+		t.Error("missing provider section header")
+	}
+	if !contains(content, `base_url = "http://127.0.0.1:8080"`) {
+		t.Error("missing provider base_url")
+	}
+	if !contains(content, `wire_api = "responses"`) {
+		t.Error("missing provider wire_api")
+	}
+}
+
+func TestSyncCodexConfig_PreservesUserProvider(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Pre-create Codex config where user chose a different provider
+	codexDir := homeDir + "/.codex"
+	os.MkdirAll(codexDir, 0755)
+	existing := `model = "gpt-5.4-mini"
+model_provider = "codex"
+model_context_window = 200000
+# some comment
+`
+	os.WriteFile(codexDir+"/config.toml", []byte(existing), 0644)
+
+	cfg := &Config{
+		DefaultProvider: "mimo",
+		Providers: []Provider{
+			{Name: "mimo", Model: "mimo-v2.5-pro", ContextWindow: 1000000},
+		},
+	}
+
+	if err := SyncCodexConfig(cfg); err != nil {
+		t.Fatalf("SyncCodexConfig() error = %v", err)
+	}
+
+	data, _ := os.ReadFile(codexDir + "/config.toml")
+	content := string(data)
+
+	// Top-level fields MUST be preserved (user chose codex, not codex-converter)
+	if !contains(content, `model = "gpt-5.4-mini"`) {
+		t.Error("model was overwritten despite user choosing different provider")
+	}
+	if !contains(content, `model_provider = "codex"`) {
+		t.Error("model_provider was overwritten")
+	}
+	if !contains(content, `# some comment`) {
+		t.Error("comments were destroyed")
+	}
+	// Provider section should still be updated
+	if !contains(content, `[model_providers.codex-converter]`) {
+		t.Error("provider section not added")
+	}
+}
+
+func TestSyncCodexConfig_UpdatesWhenUsingConverter(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	codexDir := homeDir + "/.codex"
+	os.MkdirAll(codexDir, 0755)
+	existing := `model = "old-model"
+model_provider = "codex-converter"
+`
+	os.WriteFile(codexDir+"/config.toml", []byte(existing), 0644)
+
+	cfg := &Config{
+		DefaultProvider: "mimo",
+		Providers: []Provider{
+			{Name: "mimo", Model: "mimo-v2.5-flash"}, // no context_window → skip
+		},
+	}
+
+	if err := SyncCodexConfig(cfg); err != nil {
+		t.Fatalf("SyncCodexConfig() error = %v", err)
+	}
+
+	data, _ := os.ReadFile(codexDir + "/config.toml")
+	content := string(data)
+
+	if !contains(content, `model = "mimo-v2.5-flash"`) {
+		t.Error("model was NOT updated to match converter config")
+	}
+	// context_window should NOT appear (not set in config)
+	if contains(content, "model_context_window") {
+		t.Error("context_window was written despite not being configured")
+	}
+}
+
+func TestSyncCodexConfig_NoContextWindow(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	cfg := &Config{
+		DefaultProvider: "test",
+		Providers: []Provider{
+			{Name: "test", Model: "test-model"}, // no ContextWindow
+		},
+	}
+
+	if err := SyncCodexConfig(cfg); err != nil {
+		t.Fatalf("SyncCodexConfig() error = %v", err)
+	}
+
+	data, _ := os.ReadFile(homeDir + "/.codex/config.toml")
+	content := string(data)
+
+	if contains(content, "model_context_window") {
+		t.Error("context_window must not appear when not configured")
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && searchString(s, substr)
+}
+
+func searchString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestLoadConfig_APIKeyFromEnv(t *testing.T) {
 	// Set test env var
 	os.Setenv("TEST_API_KEY", "sk-test-123")
