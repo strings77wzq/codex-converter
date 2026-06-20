@@ -424,8 +424,8 @@ func RunSetup() (*SetupConfig, error) {
 		},
 		Providers: []ProviderConfig{
 			{
-				Name:    selectedProvider.Name,
-				BaseURL: cleanBaseURL(baseURL),
+				Name:      selectedProvider.Name,
+				BaseURL:   cleanBaseURL(baseURL),
 				Model:     model.Name,
 				APIKey:    apiKey,
 				AuthStyle: authStyle,
