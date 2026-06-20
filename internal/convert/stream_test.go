@@ -59,7 +59,8 @@ func TestConvertStream_TextDelta(t *testing.T) {
 		got = append(got, ev)
 	}
 
-	// Check event types
+	// The message item is created lazily on the first content delta, so the
+	// sequence is: created, item.added, delta, delta, item.done, completed.
 	expectedTypes := []string{
 		"response.created",
 		"response.output_item.added",
@@ -70,7 +71,7 @@ func TestConvertStream_TextDelta(t *testing.T) {
 	}
 
 	if len(got) != len(expectedTypes) {
-		t.Fatalf("got %d events, want %d", len(got), len(expectedTypes))
+		t.Fatalf("got %d events, want %d\nEvents: %v", len(got), len(expectedTypes), got)
 	}
 
 	for i, et := range expectedTypes {
@@ -101,6 +102,131 @@ func TestConvertStream_TextDelta(t *testing.T) {
 	}
 }
 
+// TestConvertStream_CompletedPayload guards the fatal bug that broke every
+// release: codex-rs requires response.completed to carry a "response" object
+// that deserializes to ResponseCompleted{ id: String (required), ... }.
+// An empty "{}" payload yields no Completed event in codex and surfaces as
+// "stream closed before response.completed".
+func TestConvertStream_CompletedPayload(t *testing.T) {
+	input := strings.Join([]string{
+		`data: {"id":"chatcmpl-abc","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-abc","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		`data: {"id":"chatcmpl-abc","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}`,
+		`data: [DONE]`,
+	}, "\n")
+
+	scanner := bufio.NewScanner(strings.NewReader(input))
+	var completed *StreamEvent
+	for ev := range ConvertStream(scanner) {
+		if ev.Type == "response.completed" {
+			completed = &ev
+		}
+	}
+	if completed == nil {
+		t.Fatal("no response.completed event emitted")
+	}
+
+	var payload struct {
+		Type     string `json:"type"`
+		Response *struct {
+			ID    string `json:"id"`
+			Usage *struct {
+				InputTokens  int `json:"input_tokens"`
+				OutputTokens int `json:"output_tokens"`
+				TotalTokens  int `json:"total_tokens"`
+			} `json:"usage"`
+		} `json:"response"`
+	}
+	if err := json.Unmarshal([]byte(completed.Data), &payload); err != nil {
+		t.Fatalf("response.completed Data is not valid JSON: %v\nData: %s", err, completed.Data)
+	}
+	if payload.Type != "response.completed" {
+		t.Errorf("payload.type = %q, want %q", payload.Type, "response.completed")
+	}
+	if payload.Response == nil {
+		t.Fatal("response.completed has no \"response\" object — codex cannot parse Completed")
+	}
+	if payload.Response.ID == "" {
+		t.Error("response.completed response.id is empty — codex requires a non-empty id")
+	}
+	if payload.Response.Usage == nil || payload.Response.Usage.TotalTokens != 7 {
+		t.Errorf("usage not propagated from final chunk: %+v", payload.Response.Usage)
+	}
+}
+
+// TestConvertStream_NoDoneMarker guards bug #2: some providers end the byte
+// stream with EOF and never send "data: [DONE]". The converter must still
+// finalize with a response.completed event.
+func TestConvertStream_NoDoneMarker(t *testing.T) {
+	input := strings.Join([]string{
+		`data: {"id":"chatcmpl-x","choices":[{"index":0,"delta":{"content":"done"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		// note: no [DONE]
+	}, "\n")
+
+	scanner := bufio.NewScanner(strings.NewReader(input))
+	var got []StreamEvent
+	for ev := range ConvertStream(scanner) {
+		got = append(got, ev)
+	}
+	if len(got) == 0 || got[len(got)-1].Type != "response.completed" {
+		t.Fatalf("stream without [DONE] must still end in response.completed; got %v", got)
+	}
+}
+
+// TestConvertStream_MessageItemContent guards bug #3: codex's
+// ResponseItem::Message requires role + content[output_text]; without them the
+// assistant reply is dropped from history.
+func TestConvertStream_MessageItemContent(t *testing.T) {
+	input := strings.Join([]string{
+		`data: {"id":"chatcmpl-m","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-m","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-m","choices":[{"index":0,"delta":{"content":" there"},"finish_reason":null}]}`,
+		`data: {"id":"chatcmpl-m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		`data: [DONE]`,
+	}, "\n")
+
+	scanner := bufio.NewScanner(strings.NewReader(input))
+	var itemDone *StreamEvent
+	for ev := range ConvertStream(scanner) {
+		if ev.Type == "response.output_item.done" {
+			itemDone = &ev
+		}
+	}
+	if itemDone == nil {
+		t.Fatal("no response.output_item.done event emitted for the message")
+	}
+
+	var payload struct {
+		Item struct {
+			Type    string `json:"type"`
+			Role    string `json:"role"`
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"item"`
+	}
+	if err := json.Unmarshal([]byte(itemDone.Data), &payload); err != nil {
+		t.Fatalf("output_item.done Data is not valid JSON: %v\nData: %s", err, itemDone.Data)
+	}
+	if payload.Item.Type != "message" {
+		t.Errorf("item.type = %q, want %q", payload.Item.Type, "message")
+	}
+	if payload.Item.Role != "assistant" {
+		t.Errorf("item.role = %q, want %q (required by codex ResponseItem::Message)", payload.Item.Role, "assistant")
+	}
+	if len(payload.Item.Content) != 1 {
+		t.Fatalf("item.content has %d blocks, want 1", len(payload.Item.Content))
+	}
+	if payload.Item.Content[0].Type != "output_text" {
+		t.Errorf("content[0].type = %q, want %q", payload.Item.Content[0].Type, "output_text")
+	}
+	if payload.Item.Content[0].Text != "Hello there" {
+		t.Errorf("content[0].text = %q, want %q", payload.Item.Content[0].Text, "Hello there")
+	}
+}
+
 func TestConvertStream_ToolCall(t *testing.T) {
 	input := strings.Join([]string{
 		`data: {"id":"chatcmpl-456","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
@@ -120,10 +246,11 @@ func TestConvertStream_ToolCall(t *testing.T) {
 		got = append(got, ev)
 	}
 
-	// Check event types
+	// No spurious empty message item: a pure tool-call turn never emits a
+	// message item.added/done. Sequence is created, function_call added,
+	// three arg deltas, args.done, item.done, completed.
 	expectedTypes := []string{
 		"response.created",
-		"response.output_item.added",
 		"response.output_item.added", // tool call item added
 		"response.function_call_arguments.delta",
 		"response.function_call_arguments.delta",
@@ -141,6 +268,23 @@ func TestConvertStream_ToolCall(t *testing.T) {
 		if got[i].Type != et {
 			t.Errorf("event[%d].Type = %q, want %q", i, got[i].Type, et)
 		}
+	}
+
+	// The terminal function_call item must carry name, call_id and full args.
+	var payload struct {
+		Item struct {
+			Type      string `json:"type"`
+			Name      string `json:"name"`
+			CallID    string `json:"call_id"`
+			Arguments string `json:"arguments"`
+		} `json:"item"`
+	}
+	if err := json.Unmarshal([]byte(got[6].Data), &payload); err != nil {
+		t.Fatalf("output_item.done Data is not valid JSON: %v\nData: %s", err, got[6].Data)
+	}
+	if payload.Item.Type != "function_call" || payload.Item.Name != "shell" ||
+		payload.Item.CallID != "call_abc" || payload.Item.Arguments != `{"command":"ls"}` {
+		t.Errorf("function_call item malformed: %+v", payload.Item)
 	}
 }
 

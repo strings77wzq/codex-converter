@@ -31,17 +31,43 @@ type chatStreamChunk struct {
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
+	Usage *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage"`
 }
 
 type streamState struct {
-	itemID         string
-	itemType       string // "message" or "function_call"
+	responseID string
+
+	// message item
+	msgItemID string
+	msgActive bool
+	msgText   strings.Builder
+
+	// function_call item
+	toolItemID     string
 	toolCallID     string
 	toolCallName   string
 	toolCallArgs   strings.Builder
 	toolCallActive bool
+
+	// usage captured from the final chunk (providers send choices:[] + usage)
+	usagePrompt int
+	usageOutput int
+	usageTotal  int
+	hasUsage    bool
 }
 
+// ConvertStream translates a Chat Completions SSE byte stream (scanned line by
+// line) into Responses API SSE events that the Codex client can consume.
+//
+// The event shapes here are dictated by codex-rs's SSE parser
+// (codex-api/src/sse/responses.rs): response.completed MUST carry a "response"
+// object with a non-empty id, message items MUST include role + content, and a
+// terminal response.completed must always be emitted — otherwise Codex reports
+// "stream closed before response.completed".
 func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
 	ch := make(chan StreamEvent)
 
@@ -50,44 +76,99 @@ func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
 
 		state := &streamState{}
 		created := false
+		finalized := false
+
+		ensureCreated := func(id string) {
+			if created {
+				return
+			}
+			if id == "" {
+				state.responseID = "resp_empty"
+			} else {
+				state.responseID = "resp_" + id
+			}
+			ch <- StreamEvent{
+				Type: "response.created",
+				Data: fmt.Sprintf(`{"type":"response.created","response":{"id":"%s","object":"response","output":[]}}`, state.responseID),
+			}
+			created = true
+		}
+
+		closeMessage := func() {
+			if !state.msgActive {
+				return
+			}
+			ch <- StreamEvent{
+				Type: "response.output_item.done",
+				Data: fmt.Sprintf(`{"type":"response.output_item.done","item":{"type":"message","id":"%s","role":"assistant","content":[{"type":"output_text","text":"%s"}]}}`,
+					state.msgItemID, escapeJSON(state.msgText.String())),
+			}
+			state.msgActive = false
+		}
+
+		closeToolCall := func() {
+			if !state.toolCallActive {
+				return
+			}
+			ch <- StreamEvent{
+				Type: "response.function_call_arguments.done",
+				Data: fmt.Sprintf(`{"type":"response.function_call_arguments.done","item_id":"%s","arguments":"%s"}`,
+					state.toolItemID, escapeJSON(state.toolCallArgs.String())),
+			}
+			ch <- StreamEvent{
+				Type: "response.output_item.done",
+				Data: fmt.Sprintf(`{"type":"response.output_item.done","item":{"type":"function_call","id":"%s","call_id":"%s","name":"%s","arguments":"%s"}}`,
+					state.toolItemID, state.toolCallID, state.toolCallName, escapeJSON(state.toolCallArgs.String())),
+			}
+			state.toolCallActive = false
+		}
+
+		finalize := func() {
+			if finalized {
+				return
+			}
+			ensureCreated("")
+			closeMessage()
+			closeToolCall()
+			usage := ""
+			if state.hasUsage {
+				usage = fmt.Sprintf(`,"usage":{"input_tokens":%d,"output_tokens":%d,"total_tokens":%d}`,
+					state.usagePrompt, state.usageOutput, state.usageTotal)
+			}
+			ch <- StreamEvent{
+				Type: "response.completed",
+				Data: fmt.Sprintf(`{"type":"response.completed","response":{"id":"%s","object":"response","status":"completed"%s}}`,
+					state.responseID, usage),
+			}
+			finalized = true
+		}
 
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			// Skip empty lines and non-data lines
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
-
 			data := strings.TrimPrefix(line, "data: ")
 
-			// Handle [DONE]
 			if data == "[DONE]" {
-				// Send created if not sent yet
-				if !created {
-					ch <- StreamEvent{Type: "response.created", Data: `{"type":"response.created","response":{"id":"resp_empty","object":"response","output":[]}}`}
-					created = true
-				}
-				// Close any open item
-				if state.toolCallActive {
-					ch <- StreamEvent{
-						Type: "response.function_call_arguments.done",
-						Data: fmt.Sprintf(`{"item_id":"%s","arguments":"%s"}`, state.itemID, state.toolCallArgs.String()),
-					}
-					ch <- StreamEvent{
-						Type: "response.output_item.done",
-						Data: fmt.Sprintf(`{"item":{"type":"function_call","id":"%s","call_id":"%s","name":"%s","arguments":"%s"}}`,
-							state.itemID, state.toolCallID, state.toolCallName, state.toolCallArgs.String()),
-					}
-				}
-				ch <- StreamEvent{Type: "response.completed", Data: "{}"}
+				finalize()
 				return
 			}
 
-			// Parse chunk
 			var chunk chatStreamChunk
 			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 				continue
+			}
+
+			ensureCreated(chunk.ID)
+
+			// Capture usage (final chunk often has choices:[] + usage).
+			if chunk.Usage != nil {
+				state.usagePrompt = chunk.Usage.PromptTokens
+				state.usageOutput = chunk.Usage.CompletionTokens
+				state.usageTotal = chunk.Usage.TotalTokens
+				state.hasUsage = true
 			}
 
 			if len(chunk.Choices) == 0 {
@@ -97,116 +178,64 @@ func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
 			delta := chunk.Choices[0].Delta
 			finishReason := chunk.Choices[0].FinishReason
 
-			// Send response.created on first chunk
-			if !created {
-				ch <- StreamEvent{Type: "response.created", Data: `{"type":"response.created","response":{"id":"resp_` + chunk.ID + `","object":"response","output":[]}}`}
-				created = true
-			}
-
-			// Handle role delta (first message)
-			if delta.Role == "assistant" && delta.Content == nil && len(delta.ToolCalls) == 0 {
-				state.itemID = fmt.Sprintf("msg_%s", chunk.ID)
-				state.itemType = "message"
-				ch <- StreamEvent{
-					Type: "response.output_item.added",
-					Data: fmt.Sprintf(`{"type":"response.output_item.added","item":{"type":"message","id":"%s","role":"assistant","status":"in_progress"}}`, state.itemID),
-				}
-				continue
-			}
-
-			// Handle content delta
-			if delta.Content != nil {
-				// If we were in tool call mode, close it first
-				if state.toolCallActive {
-					ch <- StreamEvent{
-						Type: "response.function_call_arguments.done",
-						Data: fmt.Sprintf(`{"item_id":"%s","arguments":"%s"}`, state.itemID, state.toolCallArgs.String()),
-					}
-					ch <- StreamEvent{
-						Type: "response.output_item.done",
-						Data: fmt.Sprintf(`{"item":{"type":"function_call","id":"%s","call_id":"%s","name":"%s","arguments":"%s"}}`,
-							state.itemID, state.toolCallID, state.toolCallName, state.toolCallArgs.String()),
-					}
-					state.toolCallActive = false
-				}
-
-				// Start new message item if needed
-				if state.itemType != "message" {
-					state.itemID = fmt.Sprintf("msg_%s", chunk.ID)
-					state.itemType = "message"
+			// Content delta → ensure a message item, then stream text.
+			if delta.Content != nil && *delta.Content != "" {
+				closeToolCall()
+				if !state.msgActive {
+					state.msgItemID = fmt.Sprintf("msg_%s", chunk.ID)
+					state.msgActive = true
+					state.msgText.Reset()
 					ch <- StreamEvent{
 						Type: "response.output_item.added",
-						Data: fmt.Sprintf(`{"type":"response.output_item.added","item":{"type":"message","id":"%s","role":"assistant","status":"in_progress"}}`, state.itemID),
+						Data: fmt.Sprintf(`{"type":"response.output_item.added","item":{"type":"message","id":"%s","role":"assistant","content":[]}}`, state.msgItemID),
 					}
 				}
-
+				state.msgText.WriteString(*delta.Content)
 				ch <- StreamEvent{
 					Type: "response.output_text.delta",
-					Data: fmt.Sprintf(`{"type":"response.output_text.delta","item_id":"%s","delta":"%s"}`, state.itemID, escapeJSON(*delta.Content)),
+					Data: fmt.Sprintf(`{"type":"response.output_text.delta","item_id":"%s","delta":"%s"}`, state.msgItemID, escapeJSON(*delta.Content)),
 				}
 			}
 
-			// Handle tool calls delta
+			// Tool call deltas.
 			for _, tc := range delta.ToolCalls {
 				if tc.ID != "" {
-					// New tool call starting
-					if state.toolCallActive {
-						// Close previous tool call
-						ch <- StreamEvent{
-							Type: "response.function_call_arguments.done",
-							Data: fmt.Sprintf(`{"item_id":"%s","arguments":"%s"}`, state.itemID, state.toolCallArgs.String()),
-						}
-						ch <- StreamEvent{
-							Type: "response.output_item.done",
-							Data: fmt.Sprintf(`{"item":{"type":"function_call","id":"%s","call_id":"%s","name":"%s","arguments":"%s"}}`,
-								state.itemID, state.toolCallID, state.toolCallName, state.toolCallArgs.String()),
-						}
-					}
+					// New tool call: close any open items first.
+					closeMessage()
+					closeToolCall()
 
-					// Start new tool call
-					state.itemID = fmt.Sprintf("fc_%s_%d", chunk.ID, tc.Index)
-					state.itemType = "function_call"
+					state.toolItemID = fmt.Sprintf("fc_%s_%d", chunk.ID, tc.Index)
 					state.toolCallID = tc.ID
-					state.toolCallName = tc.Function.Name
+					if tc.Function != nil {
+						state.toolCallName = tc.Function.Name
+					}
 					state.toolCallArgs.Reset()
 					state.toolCallActive = true
 
 					ch <- StreamEvent{
 						Type: "response.output_item.added",
 						Data: fmt.Sprintf(`{"type":"response.output_item.added","item":{"type":"function_call","id":"%s","call_id":"%s","name":"%s","arguments":""}}`,
-							state.itemID, state.toolCallID, state.toolCallName),
+							state.toolItemID, state.toolCallID, state.toolCallName),
 					}
 				}
 
-				// Accumulate arguments
 				if tc.Function != nil && tc.Function.Arguments != "" {
 					state.toolCallArgs.WriteString(tc.Function.Arguments)
 					ch <- StreamEvent{
 						Type: "response.function_call_arguments.delta",
 						Data: fmt.Sprintf(`{"type":"response.function_call_arguments.delta","item_id":"%s","delta":"%s"}`,
-							state.itemID, escapeJSON(tc.Function.Arguments)),
+							state.toolItemID, escapeJSON(tc.Function.Arguments)),
 					}
 				}
 			}
 
-			// Handle finish reason
+			// Finish reason closes the active item.
 			if finishReason != nil {
-				if *finishReason == "stop" && state.itemType == "message" {
-					ch <- StreamEvent{
-						Type: "response.output_item.done",
-						Data: fmt.Sprintf(`{"type":"response.output_item.done","item":{"type":"message","id":"%s","status":"completed"}}`, state.itemID),
-					}
-				} else if *finishReason == "tool_calls" && state.toolCallActive {
-					ch <- StreamEvent{
-						Type: "response.function_call_arguments.done",
-						Data: fmt.Sprintf(`{"item_id":"%s","arguments":"%s"}`, state.itemID, state.toolCallArgs.String()),
-					}
-					ch <- StreamEvent{
-						Type: "response.output_item.done",
-						Data: fmt.Sprintf(`{"item":{"type":"function_call","id":"%s","call_id":"%s","name":"%s","arguments":"%s"}}`,
-							state.itemID, state.toolCallID, state.toolCallName, state.toolCallArgs.String()),
-					}
-					state.toolCallActive = false
+				switch *finishReason {
+				case "stop":
+					closeMessage()
+				case "tool_calls":
+					closeToolCall()
 				}
 			}
 		}
@@ -216,7 +245,12 @@ func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
 				Type: "error",
 				Data: fmt.Sprintf(`{"type":"error","message":"%s"}`, escapeJSON(err.Error())),
 			}
+			return
 		}
+
+		// Stream ended (EOF) without a [DONE] marker — still finalize so the
+		// Codex client receives its terminal response.completed event.
+		finalize()
 	}()
 
 	return ch
