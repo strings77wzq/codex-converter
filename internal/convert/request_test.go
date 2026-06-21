@@ -1,6 +1,8 @@
 package convert
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/strings77wzq/codex-converter/internal/types"
@@ -137,5 +139,84 @@ func TestConvertRequest_EmptyInput(t *testing.T) {
 	_, err := ConvertRequest(req)
 	if err == nil {
 		t.Error("ConvertRequest() with empty input should return error")
+	}
+}
+
+// TestConvertRequest_AssistantOutputTextHistory reproduces the multi-turn 400.
+// On the second turn Codex sends the prior assistant reply back as an input
+// item with role=assistant and content blocks of type "output_text" (the
+// Responses-API output type). The Chat Completions backend rejects
+// "output_text"; content must be a plain string or type:"text". The converter
+// must flatten text-only content to a string so no "output_text" leaks out.
+func TestConvertRequest_AssistantOutputTextHistory(t *testing.T) {
+	input := []interface{}{
+		map[string]interface{}{
+			"type": "message",
+			"role": "user",
+			"content": []interface{}{
+				map[string]interface{}{"type": "input_text", "text": "你是谁"},
+			},
+		},
+		map[string]interface{}{
+			"type": "message",
+			"role": "assistant",
+			"content": []interface{}{
+				map[string]interface{}{"type": "output_text", "text": "我是 Codex CLI"},
+			},
+		},
+	}
+	req := &types.ResponsesRequest{Model: "m", Input: input}
+
+	chat, err := ConvertRequest(req)
+	if err != nil {
+		t.Fatalf("ConvertRequest() error = %v", err)
+	}
+	if len(chat.Messages) != 2 {
+		t.Fatalf("Messages len = %d, want 2", len(chat.Messages))
+	}
+
+	// User input_text → flattened string.
+	if got, ok := chat.Messages[0].Content.(string); !ok || got != "你是谁" {
+		t.Errorf("user content = %#v, want string %q", chat.Messages[0].Content, "你是谁")
+	}
+
+	// Assistant output_text history → flattened string (NOT an array, NOT output_text).
+	if chat.Messages[1].Role != "assistant" {
+		t.Errorf("Messages[1].Role = %q, want %q", chat.Messages[1].Role, "assistant")
+	}
+	got, ok := chat.Messages[1].Content.(string)
+	if !ok {
+		t.Fatalf("assistant content type = %T, want string (flattened)", chat.Messages[1].Content)
+	}
+	if got != "我是 Codex CLI" {
+		t.Errorf("assistant content = %q, want %q", got, "我是 Codex CLI")
+	}
+
+	// Hard guard: no "output_text" anywhere in the wire payload.
+	raw, _ := json.Marshal(chat)
+	if strings.Contains(string(raw), "output_text") {
+		t.Errorf("serialized chat request still contains \"output_text\":\n%s", raw)
+	}
+}
+
+// TestConvertRequest_MultiTextBlocksConcatenated ensures multiple text parts in
+// one message are concatenated into a single string.
+func TestConvertRequest_MultiTextBlocksConcatenated(t *testing.T) {
+	input := []interface{}{
+		map[string]interface{}{
+			"type": "message",
+			"role": "user",
+			"content": []interface{}{
+				map[string]interface{}{"type": "input_text", "text": "Hello"},
+				map[string]interface{}{"type": "input_text", "text": " world"},
+			},
+		},
+	}
+	chat, err := ConvertRequest(&types.ResponsesRequest{Model: "m", Input: input})
+	if err != nil {
+		t.Fatalf("ConvertRequest() error = %v", err)
+	}
+	if got, ok := chat.Messages[0].Content.(string); !ok || got != "Hello world" {
+		t.Errorf("content = %#v, want string %q", chat.Messages[0].Content, "Hello world")
 	}
 }
