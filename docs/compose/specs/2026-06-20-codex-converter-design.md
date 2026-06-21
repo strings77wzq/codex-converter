@@ -26,6 +26,10 @@ Single binary. TOML config. Provider-as-config (no code changes to add providers
 
 ### Request (Responses → Chat)
 - `input` (string) → `messages: [{role:"user", content:input}]`
+- `input` (array) → route by item type:
+  - `message` items → `{role, content: flattenContent(...)}` (text-only arrays flatten to string)
+  - `function_call` items → `{role:"assistant", tool_calls: [{id, type:"function", function:{name, arguments}}]}`
+  - `function_call_output` items → `{role:"tool", tool_call_id, content}`
 - `instructions` → insert as `{role:"system"}` at head
 - `tools[].type=="function"` → nest into `tools[].function`
 - `text.format` → `response_format`

@@ -56,6 +56,7 @@ Codex ──Responses──▶ codex-converter :8080 ──Chat──▶ Your LL
 
 - ✅ **Text streaming** — Real-time token-by-token output with correct SSE event sequence
 - ✅ **Tool calls** — Full function calling support (essential for Codex agent)
+- ✅ **Multi-turn history** — Complete conversation history conversion including `function_call` / `function_call_output` items
 - ✅ **10+ providers built-in** — DeepSeek, MiMo, Qwen, GLM, Moonshot, Yi, Baichuan, MiniMax, Ollama, plus Custom
 - ✅ **Auto-sync model to Codex** — Change model in converter config, Codex picks it up on next converter restart
 - ✅ **`codex --model` switching** — Temporary model switches without editing any config file

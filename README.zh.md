@@ -56,6 +56,7 @@ Codex ──Responses──▶ codex-converter :8080 ──Chat──▶ 你的 
 
 - ✅ **流式输出** — 逐 token 实时返回，完整的 SSE 事件序列
 - ✅ **Tool Calls** — 完整函数调用支持（Codex agent 必需）
+- ✅ **多轮历史** — 完整对话历史转换，包括 `function_call` / `function_call_output` item
 - ✅ **10+ 内置提供商** — DeepSeek、MiMo、Qwen、GLM、Moonshot、Yi、百川、MiniMax、Ollama，以及自定义
 - ✅ **模型自动同步** — 改转换器配置的模型名，重启后 Codex 自动跟上
 - ✅ **`codex --model` 随意切** — 临时切模型不用改任何文件
