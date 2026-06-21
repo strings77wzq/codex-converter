@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -29,6 +30,15 @@ type Handler struct {
 }
 
 func NewHandler(cfg *config.Config) *Handler {
+	// Normalize server config defaults. This is the single point where a
+	// Config enters the handler — whether from Load() or constructed directly
+	// by tests — so defaults applied here are seen by every request path.
+	// Load() also applies these defaults for callers that read cfg before
+	// constructing a Handler (e.g. main.go printing the startup banner); the
+	// two are intentionally redundant rather than mutually exclusive.
+	if cfg.Server.MaxBodyMB <= 0 {
+		cfg.Server.MaxBodyMB = 10
+	}
 	return &Handler{
 		cfg:    cfg,
 		logger: log.New(os.Stderr, "[codex-converter] ", log.LstdFlags),
@@ -72,9 +82,20 @@ func (h *Handler) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
+	// Limit request body size. MaxBodyMB is normalized by NewHandler, so no
+	// fallback here — if it were 0 it would already have been set to 10.
+	maxBytes := int64(h.cfg.Server.MaxBodyMB) * 1024 * 1024
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+
 	// Parse Responses API request
 	var req types.ResponsesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			h.logf("%s %s -> 413 body too large (limit %dMB)", r.Method, r.URL.Path, h.cfg.Server.MaxBodyMB)
+			http.Error(w, fmt.Sprintf("request body too large (limit: %dMB)", h.cfg.Server.MaxBodyMB), http.StatusRequestEntityTooLarge)
+			return
+		}
 		h.logf("%s %s -> 400 invalid request: %v", r.Method, r.URL.Path, err)
 		http.Error(w, fmt.Sprintf("invalid request: %v", err), http.StatusBadRequest)
 		return
@@ -157,12 +178,22 @@ func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 	h.logf("← backend %d in %s", resp.StatusCode, time.Since(start).Round(time.Millisecond))
 
-	// Forward backend errors directly
+	// On a backend error, diagnose likely model-name problems and turn the
+	// provider's cryptic error into an actionable hint (logged to the converter
+	// console AND injected into the error Codex shows the user). This runs
+	// before the streaming branch, so it covers streaming and non-streaming.
 	if resp.StatusCode != http.StatusOK {
-		h.logf("✗ backend returned %d; forwarding error body to client", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		if looksLikeModelError(resp.StatusCode, body) {
+			hint := modelErrorHint(req.Model, provider.Model, provider.Name)
+			h.logf("✗ model error %d: req=%q config=%q — %s", resp.StatusCode, req.Model, provider.Model, hint)
+			body = augmentErrorMessage(body, hint)
+		} else {
+			h.logf("✗ backend returned %d; forwarding error body to client", resp.StatusCode)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
-		_, _ = io.Copy(w, resp.Body)
+		_, _ = w.Write(body)
 		return
 	}
 

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -263,6 +264,96 @@ func searchString(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestLoadConfig_DefaultMaxBodyMB(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	// Config without max_body_mb — should default to 10
+	configContent := `
+[[providers]]
+name = "test"
+base_url = "http://localhost:8080"
+model = "test-model"
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Server.MaxBodyMB != 10 {
+		t.Errorf("Server.MaxBodyMB = %d, want default 10", cfg.Server.MaxBodyMB)
+	}
+}
+
+func TestLoadConfig_CustomMaxBodyMB(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	configContent := `
+[server]
+max_body_mb = 5
+
+[[providers]]
+name = "test"
+base_url = "http://localhost:8080"
+model = "test-model"
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Server.MaxBodyMB != 5 {
+		t.Errorf("Server.MaxBodyMB = %d, want 5", cfg.Server.MaxBodyMB)
+	}
+}
+
+func TestLoadConfig_InvalidMaxBodyMBDefaultsToTen(t *testing.T) {
+	tests := []struct {
+		name  string
+		value int
+	}{
+		{"zero", 0},
+		{"negative", -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configPath := filepath.Join(tmpDir, "config.toml")
+
+			configContent := fmt.Sprintf(`
+[server]
+max_body_mb = %d
+
+[[providers]]
+name = "test"
+base_url = "http://localhost:8080"
+model = "test-model"
+`, tt.value)
+			if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			cfg, err := Load(configPath)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+
+			if cfg.Server.MaxBodyMB != 10 {
+				t.Errorf("Server.MaxBodyMB = %d, want default 10 for invalid value %d", cfg.Server.MaxBodyMB, tt.value)
+			}
+		})
+	}
 }
 
 func TestLoadConfig_APIKeyFromEnv(t *testing.T) {

@@ -231,6 +231,98 @@ func TestHandler_BackendTimeout(t *testing.T) {
 	}
 }
 
+func TestHandler_ModelError404_InjectsHint(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"message":"model not found"}}`))
+	}))
+	defer backend.Close()
+
+	cfg := &config.Config{
+		Providers:       []config.Provider{{Name: "glm", BaseURL: backend.URL, Model: "glm-4-plus", AuthStyle: "bearer"}},
+		DefaultProvider: "glm",
+	}
+	handler := NewHandler(cfg)
+
+	// Requested model == configured model → "fix configured name" branch.
+	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"glm-4-plus","input":"hi","stream":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (original status preserved)", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "[codex-converter]") {
+		t.Errorf("response missing injected hint; got %s", body)
+	}
+	if !strings.Contains(body, "model not found") {
+		t.Errorf("response lost original provider message; got %s", body)
+	}
+	if !strings.Contains(body, "EXACT model id") {
+		t.Errorf("expected the name-matches hint branch; got %s", body)
+	}
+}
+
+func TestHandler_NonModelError_NotInjected(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":{"message":"upstream exploded"}}`))
+	}))
+	defer backend.Close()
+
+	cfg := &config.Config{
+		Providers:       []config.Provider{{Name: "glm", BaseURL: backend.URL, Model: "glm-4-plus", AuthStyle: "bearer"}},
+		DefaultProvider: "glm",
+	}
+	handler := NewHandler(cfg)
+
+	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"glm-4-plus","input":"hi","stream":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", w.Code)
+	}
+	if strings.Contains(w.Body.String(), "[codex-converter]") {
+		t.Errorf("500 should NOT be injected with a model hint; got %s", w.Body.String())
+	}
+}
+
+func TestHandler_StreamingModelError404_InjectsHint(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Provider rejects the streaming request with a normal JSON error.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"message":"no such model"}}`))
+	}))
+	defer backend.Close()
+
+	cfg := &config.Config{
+		Providers:       []config.Provider{{Name: "glm", BaseURL: backend.URL, Model: "glm-4-plus", AuthStyle: "bearer"}},
+		DefaultProvider: "glm",
+	}
+	handler := NewHandler(cfg)
+
+	// Requested model differs from configured → "stale / --model" branch.
+	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"wrong-name","input":"hi","stream":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "[codex-converter]") || !strings.Contains(body, "stale") {
+		t.Errorf("streaming 404 should inject the stale/--model hint; got %s", body)
+	}
+}
+
 func TestHandler_HealthEndpoint(t *testing.T) {
 	cfg := &config.Config{
 		Providers: []config.Provider{
@@ -296,5 +388,80 @@ func TestHandler_LogsRequestAndBackend(t *testing.T) {
 	}
 	if !strings.Contains(out, "backend") || !strings.Contains(out, "200") {
 		t.Errorf("log missing backend status; got:\n%s", out)
+	}
+}
+
+func TestHandler_BodyWithinLimit(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":     "chatcmpl-ok",
+			"object": "chat.completion",
+			"model":  "m",
+			"choices": []map[string]any{
+				{"index": 0, "message": map[string]any{"role": "assistant", "content": "hi"}, "finish_reason": "stop"},
+			},
+		})
+	}))
+	defer backend.Close()
+
+	cfg := &config.Config{
+		Server:          config.Server{MaxBodyMB: 1},
+		Providers:       []config.Provider{{Name: "test", BaseURL: backend.URL, Model: "m", AuthStyle: "bearer"}},
+		DefaultProvider: "test",
+	}
+	handler := NewHandler(cfg)
+
+	// 500KB body — under 1MB limit
+	smallBody := strings.Repeat("x", 500*1024)
+	reqBody := fmt.Sprintf(`{"model":"m","input":"%s","stream":false}`, smallBody)
+
+	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body within limit)", w.Code)
+	}
+}
+
+func TestHandler_BodyExceedsLimit(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("backend should not be called when body exceeds limit")
+	}))
+	defer backend.Close()
+
+	cfg := &config.Config{
+		Server:          config.Server{MaxBodyMB: 1},
+		Providers:       []config.Provider{{Name: "test", BaseURL: backend.URL, Model: "m", AuthStyle: "bearer"}},
+		DefaultProvider: "test",
+	}
+	handler := NewHandler(cfg)
+
+	// 2MB body — exceeds 1MB limit
+	bigInput := strings.Repeat("x", 2*1024*1024)
+	reqBody := fmt.Sprintf(`{"model":"m","input":"%s","stream":false}`, bigInput)
+
+	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413 (body exceeds limit)", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "too large") {
+		t.Errorf("response body should mention 'too large'; got %s", body)
+	}
+	// T3: limit value must appear in the response so the user knows the
+	// boundary and can act (shrink input or raise max_body_mb). Hard-coded
+	// "1MB" matches the test cfg (MaxBodyMB: 1) — if this breaks, the
+	// configured limit is not reaching the error message.
+	if !strings.Contains(body, "1MB") {
+		t.Errorf("response should include the limit value for user actionability; got %s", body)
 	}
 }
