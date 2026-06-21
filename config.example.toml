@@ -1,32 +1,51 @@
 # codex-converter 配置文件
-# 首次运行 codex-converter 会自动生成此配置
+# 首次运行 codex-converter 会通过交互式向导自动生成此文件
+# 你也可以手动编辑
 
-default_provider = "default"
+default_provider = "deepseek"
 
 [server]
 port = 8080
 host = "127.0.0.1"
 
-# 添加任何 Chat Completions 兼容的提供商
-# 只需填写: name, base_url, model, api_key
+# ============================================================
+# 提供商配置
+# model 必须与提供商 API 要求的名称完全一致
+# auth_style: "bearer"（默认）或 "api_key_header"（MiMo 等用）
+# ============================================================
 
 [[providers]]
-name = "default"
-base_url = "https://api.xiaomimimo.com"
-model = "mimo-v2.5-pro"
-api_key = "your-api-key"
-auth_style = "api_key_header"
+name = "deepseek"
+base_url = "https://api.deepseek.com"
+model = "deepseek-v4-pro"
+api_key = "your-deepseek-api-key"
+# api_key_env = "DEEPSEEK_API_KEY"    # 从环境变量读取（优先级低于 api_key）
+auth_style = "bearer"
+# context_window = 1000000            # 可选：同步到 Codex，控制 compact 行为
 
 # [[providers]]
-# name = "deepseek"
-# base_url = "https://api.deepseek.com"
-# model = "deepseek-v4-pro"
-# api_key = "your-deepseek-key"
-# auth_style = "bearer"
+# name = "mimo"
+# base_url = "https://api.xiaomimimo.com"
+# model = "mimo-v2.5-pro"
+# api_key = "your-mimo-api-key"
+# auth_style = "api_key_header"       # MiMo 使用 api-key 头认证
 
 # [[providers]]
 # name = "qwen"
 # base_url = "https://dashscope.aliyuncs.com/compatible-mode"
 # model = "qwen-max"
-# api_key = "your-qwen-key"
+# api_key = "your-qwen-api-key"
 # auth_style = "bearer"
+
+# [[providers]]
+# name = "glm"
+# base_url = "https://open.bigmodel.cn/api/paas"
+# model = "glm-4-plus"
+# api_key = "your-glm-api-key"
+# auth_style = "bearer"
+
+# [[providers]]
+# name = "ollama"
+# base_url = "http://localhost:11434/v1"
+# model = "llama3"
+# auth_style = "none"                 # Ollama 本地无需认证

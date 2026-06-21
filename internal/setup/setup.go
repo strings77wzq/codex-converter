@@ -62,7 +62,9 @@ var knownProviders = []ProviderInfo{
 		BaseURL:   "https://api.xiaomimimo.com",
 		AuthStyle: "api_key_header",
 		Models: []ModelInfo{
-			{Name: "mimo-v2.5-pro", ContextWindow: 1000000, Description: "MiMo最新模型，1M上下文"},
+			{Name: "mimo-v2.5-pro", ContextWindow: 1000000, Description: "MiMo Pro系列，1M上下文，深度思考"},
+			{Name: "mimo-v2.5", ContextWindow: 1000000, Description: "MiMo Omni系列，全模态理解"},
+			{Name: "mimo-v2-flash", ContextWindow: 256000, Description: "MiMo Flash系列，更快更便宜"},
 		},
 	},
 	{
