@@ -457,4 +457,11 @@ func TestHandler_BodyExceedsLimit(t *testing.T) {
 	if !strings.Contains(body, "too large") {
 		t.Errorf("response body should mention 'too large'; got %s", body)
 	}
+	// T3: limit value must appear in the response so the user knows the
+	// boundary and can act (shrink input or raise max_body_mb). Hard-coded
+	// "1MB" matches the test cfg (MaxBodyMB: 1) — if this breaks, the
+	// configured limit is not reaching the error message.
+	if !strings.Contains(body, "1MB") {
+		t.Errorf("response should include the limit value for user actionability; got %s", body)
+	}
 }

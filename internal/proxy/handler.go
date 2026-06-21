@@ -30,6 +30,15 @@ type Handler struct {
 }
 
 func NewHandler(cfg *config.Config) *Handler {
+	// Normalize server config defaults. This is the single point where a
+	// Config enters the handler — whether from Load() or constructed directly
+	// by tests — so defaults applied here are seen by every request path.
+	// Load() also applies these defaults for callers that read cfg before
+	// constructing a Handler (e.g. main.go printing the startup banner); the
+	// two are intentionally redundant rather than mutually exclusive.
+	if cfg.Server.MaxBodyMB <= 0 {
+		cfg.Server.MaxBodyMB = 10
+	}
 	return &Handler{
 		cfg:    cfg,
 		logger: log.New(os.Stderr, "[codex-converter] ", log.LstdFlags),
@@ -73,13 +82,9 @@ func (h *Handler) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
-	// Limit request body size to prevent unbounded memory consumption.
-	// Apply default if not set via config.Load (e.g. tests constructing Config directly).
-	maxBodyMB := h.cfg.Server.MaxBodyMB
-	if maxBodyMB <= 0 {
-		maxBodyMB = 10
-	}
-	maxBytes := int64(maxBodyMB) * 1024 * 1024
+	// Limit request body size. MaxBodyMB is normalized by NewHandler, so no
+	// fallback here — if it were 0 it would already have been set to 10.
+	maxBytes := int64(h.cfg.Server.MaxBodyMB) * 1024 * 1024
 	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 
 	// Parse Responses API request
@@ -87,8 +92,8 @@ func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			h.logf("%s %s -> 413 body too large (limit %dMB)", r.Method, r.URL.Path, maxBodyMB)
-			http.Error(w, fmt.Sprintf("request body too large (limit: %dMB)", maxBodyMB), http.StatusRequestEntityTooLarge)
+			h.logf("%s %s -> 413 body too large (limit %dMB)", r.Method, r.URL.Path, h.cfg.Server.MaxBodyMB)
+			http.Error(w, fmt.Sprintf("request body too large (limit: %dMB)", h.cfg.Server.MaxBodyMB), http.StatusRequestEntityTooLarge)
 			return
 		}
 		h.logf("%s %s -> 400 invalid request: %v", r.Method, r.URL.Path, err)
