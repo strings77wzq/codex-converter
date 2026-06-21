@@ -1,6 +1,7 @@
 # codex-converter 配置文件
 # 首次运行 codex-converter 会通过交互式向导自动生成此文件
 # 你也可以手动编辑
+# ⚠️ 你只编辑本文件；~/.codex/config.toml 由 converter 自动管理，不要手动修改
 
 default_provider = "deepseek"
 
@@ -11,7 +12,7 @@ host = "127.0.0.1"
 
 # ============================================================
 # 提供商配置
-# model 必须与提供商 API 要求的名称完全一致
+# model 必须与提供商 API 要求的名称完全一致，也是同步进 ~/.codex/config.toml 的默认模型
 # auth_style: "bearer"（默认）或 "api_key_header"（MiMo 等用）
 # ============================================================
 
