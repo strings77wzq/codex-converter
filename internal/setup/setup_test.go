@@ -106,3 +106,60 @@ func TestTestConnection_CleansURL(t *testing.T) {
 		t.Errorf("testConnection() error = %v", err)
 	}
 }
+
+func TestDetectAuthStyle_BearerSucceeds(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-key" {
+			t.Errorf("expected Bearer auth, got Authorization = %q", r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	style, err := detectAuthStyle(server.URL, "test-key", "test-model")
+	if err != nil {
+		t.Fatalf("detectAuthStyle() error = %v", err)
+	}
+	if style != "bearer" {
+		t.Errorf("detectAuthStyle() = %q, want %q", style, "bearer")
+	}
+}
+
+func TestDetectAuthStyle_BearerFailsApiKeyHeaderSucceeds(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			// Bearer was tried and failed
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":"unauthorized"}`))
+			return
+		}
+		if r.Header.Get("api-key") != "test-key" {
+			t.Errorf("expected api-key header, got api-key = %q", r.Header.Get("api-key"))
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	style, err := detectAuthStyle(server.URL, "test-key", "test-model")
+	if err != nil {
+		t.Fatalf("detectAuthStyle() error = %v", err)
+	}
+	if style != "api_key_header" {
+		t.Errorf("detectAuthStyle() = %q, want %q", style, "api_key_header")
+	}
+}
+
+func TestDetectAuthStyle_BothFail(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"unauthorized"}`))
+	}))
+	defer server.Close()
+
+	_, err := detectAuthStyle(server.URL, "wrong-key", "test-model")
+	if err == nil {
+		t.Error("detectAuthStyle() should return error when both auth styles fail")
+	}
+}

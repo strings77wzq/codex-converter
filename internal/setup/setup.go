@@ -187,6 +187,21 @@ func printError(msg string) {
 	fmt.Printf("  %s✗ %s%s\n", colorRed, msg, colorReset)
 }
 
+// detectAuthStyle probes the provider with bearer auth first; on 401/403 it
+// retries with api_key_header style. Returns the working auth style or an
+// error if both fail.
+func detectAuthStyle(baseURL, apiKey, model string) (string, error) {
+	// Try bearer first
+	if err := testConnection(baseURL, apiKey, model, "bearer"); err == nil {
+		return "bearer", nil
+	}
+	// Bearer failed — try api_key_header
+	if err := testConnection(baseURL, apiKey, model, "api_key_header"); err == nil {
+		return "api_key_header", nil
+	}
+	return "", fmt.Errorf("认证失败: bearer 和 api_key_header 均不可用\n  请检查: 1) API Key 是否正确 2) URL 是否正确")
+}
+
 func testConnection(baseURL, apiKey, model, authStyle string) error {
 	// 清洗base_url，去掉多余的后缀
 	cleanURL := strings.TrimRight(baseURL, "/")
@@ -303,10 +318,11 @@ func RunSetup() (*SetupConfig, error) {
 		printInfo(fmt.Sprintf("Base URL: %s (自动填充)", baseURL))
 	}
 
-	// API Key
+	// API Key — read once, reused in Step 4 (confirm/test) and config build.
+	var apiKey string
 	if selectedProvider.AuthStyle != "none" {
 		fmt.Printf("  %sAPI Key:%s ", colorBold, colorReset)
-		apiKey, _ := reader.ReadString('\n')
+		apiKey, _ = reader.ReadString('\n')
 		apiKey = strings.TrimSpace(apiKey)
 		if apiKey == "" {
 			return nil, fmt.Errorf("API Key 不能为空")
@@ -325,6 +341,7 @@ func RunSetup() (*SetupConfig, error) {
 	var models []ModelInfo
 	if selectedProvider.Name == "custom" {
 		// 自定义provider需要手动输入模型
+		printInfo("输入 provider 文档里的精确模型 id（如 deepseek-v4-pro），不是别名")
 		fmt.Printf("  %sModel 名称:%s ", colorBold, colorReset)
 		modelName, _ := reader.ReadString('\n')
 		modelName = strings.TrimSpace(modelName)
@@ -398,21 +415,16 @@ func RunSetup() (*SetupConfig, error) {
 		authStyle = "bearer"
 	}
 
-	// Get API key for testing
-	var apiKey string
-	if selectedProvider.AuthStyle != "none" {
-		fmt.Printf("  %sAPI Key:%s ", colorBold, colorReset)
-		apiKey, _ = reader.ReadString('\n')
-		apiKey = strings.TrimSpace(apiKey)
-		if apiKey == "" {
-			return nil, fmt.Errorf("API Key 不能为空")
+	// S4c: auto-detect auth_style for custom providers
+	if selectedProvider.Name == "custom" && apiKey != "" {
+		printInfo("自动检测认证方式...")
+		if detected, err := detectAuthStyle(baseURL, apiKey, model.Name); err == nil {
+			authStyle = detected
+			printSuccess(fmt.Sprintf("认证方式: %s", authStyle))
+		} else {
+			printError(err.Error())
+			return nil, err
 		}
-		// Mask key
-		maskedKey := apiKey
-		if len(apiKey) > 8 {
-			maskedKey = apiKey[:4] + "****" + apiKey[len(apiKey)-4:]
-		}
-		printSuccess(fmt.Sprintf("API Key: %s", maskedKey))
 	}
 
 	// Build config
