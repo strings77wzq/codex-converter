@@ -274,7 +274,8 @@ func TestConvertRequest_FunctionCallOutput(t *testing.T) {
 // TestConvertRequest_ToolCallChain covers a realistic multi-turn tool-call
 // sequence: user → assistant(function_call) → function_call_output → assistant(text).
 // All four items must survive conversion and appear as:
-//   user → assistant(tool_calls) → tool → assistant(text)
+//
+//	user → assistant(tool_calls) → tool → assistant(text)
 func TestConvertRequest_ToolCallChain(t *testing.T) {
 	input := []interface{}{
 		map[string]interface{}{
