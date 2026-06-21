@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -254,5 +256,45 @@ func TestHandler_HealthEndpoint(t *testing.T) {
 
 	if resp["status"] != "ok" {
 		t.Errorf("health status = %q, want %q", resp["status"], "ok")
+	}
+	// The service identity lets a preflight probe recognise our own instance.
+	if resp["service"] != "codex-converter" {
+		t.Errorf("health service = %q, want %q", resp["service"], "codex-converter")
+	}
+}
+
+func TestHandler_LogsRequestAndBackend(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":     "chatcmpl-log",
+			"object": "chat.completion",
+			"model":  "m",
+			"choices": []map[string]any{
+				{"index": 0, "message": map[string]any{"role": "assistant", "content": "hi"}, "finish_reason": "stop"},
+			},
+		})
+	}))
+	defer backend.Close()
+
+	cfg := &config.Config{
+		Providers:       []config.Provider{{Name: "test", BaseURL: backend.URL, Model: "m", AuthStyle: "bearer"}},
+		DefaultProvider: "test",
+	}
+	handler := NewHandler(cfg)
+
+	var buf bytes.Buffer
+	handler.logger = log.New(&buf, "", 0)
+
+	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"m","input":"hi","stream":false}`))
+	req.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	out := buf.String()
+	if !strings.Contains(out, "/v1/responses") {
+		t.Errorf("log missing request line; got:\n%s", out)
+	}
+	if !strings.Contains(out, "backend") || !strings.Contains(out, "200") {
+		t.Errorf("log missing backend status; got:\n%s", out)
 	}
 }

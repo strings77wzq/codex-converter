@@ -106,6 +106,22 @@ func main() {
 	handler := proxy.NewHandler(cfg)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+
+	// Preflight: classify the port before binding so users get an actionable
+	// message instead of a cryptic "address already in use" crash.
+	switch state := proxy.ProbePort(cfg.Server.Host, cfg.Server.Port, 2*time.Second); state {
+	case proxy.PortFree:
+		// proceed to bind
+	default:
+		msg, code, proceed := proxy.StartupAdvice(state, cfg.Server.Host, cfg.Server.Port)
+		if !proceed {
+			fmt.Println()
+			fmt.Println(msg)
+			fmt.Println()
+			os.Exit(code)
+		}
+	}
+
 	fmt.Printf("  🚀 服务已启动 %s\n", addr)
 	fmt.Println()
 	fmt.Println("  现在你可以直接运行: codex")
@@ -120,6 +136,15 @@ func main() {
 		IdleTimeout:  2 * time.Minute,
 	}
 	if err := srv.ListenAndServe(); err != nil {
+		// A race can still lose the bind between preflight and Listen; give the
+		// same actionable guidance instead of a raw Go error.
+		if proxy.IsAddrInUse(err) {
+			msg, code, _ := proxy.StartupAdvice(proxy.PortBusyOther, cfg.Server.Host, cfg.Server.Port)
+			fmt.Println()
+			fmt.Println(msg)
+			fmt.Println()
+			os.Exit(code)
+		}
 		log.Fatalf("server error: %v", err)
 	}
 }
