@@ -3,6 +3,7 @@ package convert
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/strings77wzq/codex-converter/internal/types"
 )
@@ -90,13 +91,43 @@ func convertInput(input interface{}) ([]types.ChatMessage, error) {
 	}
 }
 
-// convertContent recursively converts Responses API content blocks to Chat Completions
-// format. Key mapping: input_text → text (the only difference in content block types).
+// convertContent converts Responses API content blocks to a form the Chat
+// Completions API accepts.
+//
+// Responses API uses two text block types — "input_text" (user) and
+// "output_text" (assistant history echoed back on later turns) — whereas Chat
+// Completions only knows "text" (or a plain string). When a message's content
+// is entirely text, we flatten it to a single string: that is accepted by
+// every backend for both user and assistant messages, and avoids strict
+// backends rejecting array-form assistant content. Mixed content (e.g. images)
+// keeps the array form, with known text types normalised to "text".
 func convertContent(content interface{}) interface{} {
 	switch v := content.(type) {
 	case string:
 		return v
 	case []interface{}:
+		texts := make([]string, 0, len(v))
+		allText := true
+		for _, block := range v {
+			blockMap, ok := block.(map[string]interface{})
+			if !ok {
+				allText = false
+				break
+			}
+			if isTextBlock(blockMap) {
+				if s, ok := blockMap["text"].(string); ok {
+					texts = append(texts, s)
+					continue
+				}
+			}
+			allText = false
+			break
+		}
+		if allText {
+			return strings.Join(texts, "")
+		}
+
+		// Mixed content: preserve the array but normalise text block types.
 		blocks := make([]interface{}, 0, len(v))
 		for _, block := range v {
 			blockMap, ok := block.(map[string]interface{})
@@ -104,12 +135,12 @@ func convertContent(content interface{}) interface{} {
 				blocks = append(blocks, block)
 				continue
 			}
-			// Convert input_text → text for Chat Completions compatibility
-			if typeVal, ok := blockMap["type"].(string); ok && typeVal == "input_text" {
-				blockMap = map[string]interface{}{
+			if isTextBlock(blockMap) {
+				blocks = append(blocks, map[string]interface{}{
 					"type": "text",
 					"text": blockMap["text"],
-				}
+				})
+				continue
 			}
 			blocks = append(blocks, blockMap)
 		}
@@ -117,6 +148,13 @@ func convertContent(content interface{}) interface{} {
 	default:
 		return content
 	}
+}
+
+// isTextBlock reports whether a content block is a text-bearing block in either
+// the Responses API ("input_text"/"output_text") or Chat Completions ("text").
+func isTextBlock(blockMap map[string]interface{}) bool {
+	t, _ := blockMap["type"].(string)
+	return t == "input_text" || t == "output_text" || t == "text"
 }
 
 func getString(m map[string]interface{}, key string) string {
