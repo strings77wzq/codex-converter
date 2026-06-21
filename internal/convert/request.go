@@ -76,12 +76,21 @@ func convertInput(input interface{}) ([]types.ChatMessage, error) {
 				continue
 			}
 
-			msg := types.ChatMessage{
-				Role:    getString(itemMap, "role"),
-				Content: convertContent(itemMap["content"]),
-			}
-			if msg.Role != "" {
-				messages = append(messages, msg)
+			itemType := getString(itemMap, "type")
+			switch itemType {
+			case "function_call":
+				messages = append(messages, convertFunctionCall(itemMap))
+			case "function_call_output":
+				messages = append(messages, convertFunctionCallOutput(itemMap))
+			default:
+				// "message" and any other role-bearing items
+				role := getString(itemMap, "role")
+				if role != "" {
+					messages = append(messages, types.ChatMessage{
+						Role:    role,
+						Content: convertContent(itemMap["content"]),
+					})
+				}
 			}
 		}
 		return messages, nil
@@ -164,4 +173,32 @@ func getString(m map[string]interface{}, key string) string {
 		}
 	}
 	return ""
+}
+
+// convertFunctionCall converts a Responses API "function_call" item into a
+// Chat Completions assistant message with tool_calls.
+func convertFunctionCall(item map[string]interface{}) types.ChatMessage {
+	return types.ChatMessage{
+		Role: "assistant",
+		ToolCalls: []types.ToolCall{
+			{
+				ID:   getString(item, "call_id"),
+				Type: "function",
+				Function: types.FunctionCall{
+					Name:      getString(item, "name"),
+					Arguments: getString(item, "arguments"),
+				},
+			},
+		},
+	}
+}
+
+// convertFunctionCallOutput converts a Responses API "function_call_output"
+// item into a Chat Completions tool message.
+func convertFunctionCallOutput(item map[string]interface{}) types.ChatMessage {
+	return types.ChatMessage{
+		Role:       "tool",
+		ToolCallID: getString(item, "call_id"),
+		Content:    getString(item, "output"),
+	}
 }
