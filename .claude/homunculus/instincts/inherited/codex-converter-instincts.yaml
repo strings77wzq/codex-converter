@@ -1,0 +1,393 @@
+# Instincts generated from https://github.com/strings77wzq/codex-converter
+# Generated: 2026-06-20T10:46:38.152Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: codex-converter-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/strings77wzq/codex-converter
+---
+
+# Codex Converter Commit Length
+
+## Action
+
+Write moderate-length commit messages (~58 characters)
+
+## Evidence
+
+- Average commit message length: 58 chars
+- Based on 5 commits
+
+---
+id: codex-converter-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/strings77wzq/codex-converter
+---
+
+# Codex Converter Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: codex-converter-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/strings77wzq/codex-converter
+---
+
+# Codex Converter Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: codex-converter-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/strings77wzq/codex-converter
+---
+
+# Codex Converter Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: codex-converter-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/strings77wzq/codex-converter
+---
+
+# Codex Converter Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: codex-converter-workflow-add-feature-design-and-implementation-docs
+trigger: "when doing add feature design and implementation docs"
+confidence: 0.55
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/strings77wzq/codex-converter
+---
+
+# Codex Converter Workflow Add Feature Design And Implementation Docs
+
+## Action
+
+Follow the add-feature-design-and-implementation-docs workflow:
+1. Create a design spec markdown file in docs/superpowers/specs/
+2. Create an implementation plan markdown file in docs/superpowers/plans/
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~1x per month
+- Files: docs/superpowers/specs/{date}-{feature}-design.md, docs/superpowers/plans/{date}-{feature}.md
+
+---
+id: codex-converter-workflow-test-and-fix-backend-code
+trigger: "when doing test and fix backend code"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/strings77wzq/codex-converter
+---
+
+# Codex Converter Workflow Test And Fix Backend Code
+
+## Action
+
+Follow the test-and-fix-backend-code workflow:
+1. Edit backend implementation file(s) (e.g., .go source files)
+2. Edit or add corresponding test file(s) (e.g., _test.go files)
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: internal/proxy/handler.go, internal/proxy/handler_test.go, internal/convert/stream.go
+
+---
+id: codex-converter-instinct-file-naming
+trigger: "When creating or renaming a Go source file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: strings77wzq/codex-converter
+---
+
+# Codex Converter Instinct File Naming
+
+## Action
+
+Use camelCase for file names
+
+## Evidence
+
+- Pattern in namingConventions.files
+- Observed in internal/proxy/handler.go
+
+---
+id: codex-converter-instinct-function-naming
+trigger: "When defining a function in Go"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: strings77wzq/codex-converter
+---
+
+# Codex Converter Instinct Function Naming
+
+## Action
+
+Use camelCase for function names
+
+## Evidence
+
+- Pattern in namingConventions.functions
+- Seen in internal/proxy/handler.go
+
+---
+id: codex-converter-instinct-class-naming
+trigger: "When defining a struct or class in Go"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: strings77wzq/codex-converter
+---
+
+# Codex Converter Instinct Class Naming
+
+## Action
+
+Use PascalCase for struct or class names
+
+## Evidence
+
+- Pattern in namingConventions.classes
+- Seen in internal/proxy/handler.go
+
+---
+id: codex-converter-instinct-constant-naming
+trigger: "When declaring a constant in Go"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: strings77wzq/codex-converter
+---
+
+# Codex Converter Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names
+
+## Evidence
+
+- Pattern in namingConventions.constants
+- Seen in internal/proxy/handler.go
+
+---
+id: codex-converter-instinct-import-style
+trigger: "When importing modules in Go"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: strings77wzq/codex-converter
+---
+
+# Codex Converter Instinct Import Style
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in importStyle
+- Seen in internal/proxy/handler.go
+
+---
+id: codex-converter-instinct-export-style
+trigger: "When exporting functions or types in Go"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: strings77wzq/codex-converter
+---
+
+# Codex Converter Instinct Export Style
+
+## Action
+
+Use named exports (export only what is needed)
+
+## Evidence
+
+- Pattern in exportStyle
+- Seen in internal/proxy/handler.go
+
+---
+id: codex-converter-instinct-test-file-location
+trigger: "When adding tests for Go code"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: strings77wzq/codex-converter
+---
+
+# Codex Converter Instinct Test File Location
+
+## Action
+
+Place test files in the same folder as the implementation, with _test.go suffix
+
+## Evidence
+
+- internal/proxy/handler.go and internal/proxy/handler_test.go
+- internal/convert/stream.go and internal/convert/stream_test.go
+
+---
+id: codex-converter-instinct-test-after-fix
+trigger: "When fixing or enhancing backend code"
+confidence: 0.95
+domain: testing
+source: repo-analysis
+source_repo: strings77wzq/codex-converter
+---
+
+# Codex Converter Instinct Test After Fix
+
+## Action
+
+Add or update corresponding _test.go files to cover the change
+
+## Evidence
+
+- test+fix: add staged timeout and context to backend HTTP forwarding
+- test+fix: raise stream buffer limit and report scanner errors
+
+---
+id: codex-converter-instinct-commit-prefix-docs
+trigger: "When committing documentation changes"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: strings77wzq/codex-converter
+---
+
+# Codex Converter Instinct Commit Prefix Docs
+
+## Action
+
+Prefix commit message with 'docs:'
+
+## Evidence
+
+- docs: add fix-batch design spec (P0-1/P0-2/P1-1)
+- docs: fix broken build command and sync spec file structure
+
+---
+id: codex-converter-instinct-commit-prefix-test-fix
+trigger: "When committing changes that include both tests and fixes"
+confidence: 0.8
+domain: git
+source: repo-analysis
+source_repo: strings77wzq/codex-converter
+---
+
+# Codex Converter Instinct Commit Prefix Test Fix
+
+## Action
+
+Prefix commit message with 'test+fix:'
+
+## Evidence
+
+- test+fix: add staged timeout and context to backend HTTP forwarding
+- test+fix: raise stream buffer limit and report scanner errors
+
+---
+id: codex-converter-instinct-workflow-feature-docs
+trigger: "When proposing and planning a new feature or major change"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: strings77wzq/codex-converter
+---
+
+# Codex Converter Instinct Workflow Feature Docs
+
+## Action
+
+Create a design spec in docs/superpowers/specs/ and an implementation plan in docs/superpowers/plans/
+
+## Evidence
+
+- Workflow: add-feature-design-and-implementation-docs
+- docs: add fix-batch design spec (P0-1/P0-2/P1-1)
+- docs: add fix-batch implementation plan (P0-1/P0-2/P1-1)
+
+---
+id: codex-converter-instinct-workflow-test-fix-backend
+trigger: "When fixing or improving backend logic and ensuring it is tested"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: strings77wzq/codex-converter
+---
+
+# Codex Converter Instinct Workflow Test Fix Backend
+
+## Action
+
+Edit backend implementation file(s) and corresponding _test.go file(s) together
+
+## Evidence
+
+- Workflow: test-and-fix-backend-code
+- test+fix: add staged timeout and context to backend HTTP forwarding
+
