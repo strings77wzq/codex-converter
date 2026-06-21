@@ -13,9 +13,10 @@ type ChatRequest struct {
 }
 
 type ChatMessage struct {
-	Role      string      `json:"role"`
-	Content   interface{} `json:"content"` // string or []ContentPart
-	ToolCalls []ToolCall  `json:"tool_calls,omitempty"`
+	Role       string      `json:"role"`
+	Content    interface{} `json:"content"` // string or []ContentPart
+	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
+	ToolCallID string      `json:"tool_call_id,omitempty"`
 }
 
 type ToolCall struct {
