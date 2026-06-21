@@ -11,8 +11,9 @@ import (
 )
 
 type Server struct {
-	Port int    `toml:"port"`
-	Host string `toml:"host"`
+	Port      int    `toml:"port"`
+	Host      string `toml:"host"`
+	MaxBodyMB int    `toml:"max_body_mb"` // default 10
 }
 
 type Provider struct {
@@ -48,6 +49,11 @@ func Load(path string) (*Config, error) {
 		if cfg.Providers[i].AuthStyle == "" {
 			cfg.Providers[i].AuthStyle = "bearer"
 		}
+	}
+
+	// Set default max_body_mb
+	if cfg.Server.MaxBodyMB <= 0 {
+		cfg.Server.MaxBodyMB = 10
 	}
 
 	return cfg, nil

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -72,9 +73,24 @@ func (h *Handler) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
+	// Limit request body size to prevent unbounded memory consumption.
+	// Apply default if not set via config.Load (e.g. tests constructing Config directly).
+	maxBodyMB := h.cfg.Server.MaxBodyMB
+	if maxBodyMB <= 0 {
+		maxBodyMB = 10
+	}
+	maxBytes := int64(maxBodyMB) * 1024 * 1024
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+
 	// Parse Responses API request
 	var req types.ResponsesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			h.logf("%s %s -> 413 body too large (limit %dMB)", r.Method, r.URL.Path, maxBodyMB)
+			http.Error(w, fmt.Sprintf("request body too large (limit: %dMB)", maxBodyMB), http.StatusRequestEntityTooLarge)
+			return
+		}
 		h.logf("%s %s -> 400 invalid request: %v", r.Method, r.URL.Path, err)
 		http.Error(w, fmt.Sprintf("invalid request: %v", err), http.StatusBadRequest)
 		return
@@ -157,12 +173,22 @@ func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 	h.logf("← backend %d in %s", resp.StatusCode, time.Since(start).Round(time.Millisecond))
 
-	// Forward backend errors directly
+	// On a backend error, diagnose likely model-name problems and turn the
+	// provider's cryptic error into an actionable hint (logged to the converter
+	// console AND injected into the error Codex shows the user). This runs
+	// before the streaming branch, so it covers streaming and non-streaming.
 	if resp.StatusCode != http.StatusOK {
-		h.logf("✗ backend returned %d; forwarding error body to client", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		if looksLikeModelError(resp.StatusCode, body) {
+			hint := modelErrorHint(req.Model, provider.Model, provider.Name)
+			h.logf("✗ model error %d: req=%q config=%q — %s", resp.StatusCode, req.Model, provider.Model, hint)
+			body = augmentErrorMessage(body, hint)
+		} else {
+			h.logf("✗ backend returned %d; forwarding error body to client", resp.StatusCode)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
-		_, _ = io.Copy(w, resp.Body)
+		_, _ = w.Write(body)
 		return
 	}
 
