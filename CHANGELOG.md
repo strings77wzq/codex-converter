@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.0.12 (2026-06-21)
+
+### Fix: P0 hardening — Dockerfile + request body size limit
+
+- Fix Dockerfile build path (`cmd/server` → `.`), align Go version with go.mod (1.25)
+- Add `max_body_mb` config (default 10MB) with `http.MaxBytesReader` — prevents unbounded memory consumption
+- Return HTTP 413 with actionable error message when body exceeds limit
+- Align Dockerfile ldflags with CI (`-s -w`)
+
+### Feat: model-error diagnosis
+
+- Turn cryptic provider 404/400/422 errors into actionable hints
+- Detects model-name mismatches (configured vs requested) and suggests fixes
+- Injects `[codex-converter]` hint into both log and response body
+
+### Fix: setup wizard double API key prompt (S4b)
+
+- API key is now read once in Step 2, reused in Step 4 and config build
+- Previously users had to paste their key twice during setup
+
+### Feat: auth_style auto-detect for custom providers (S4c)
+
+- Custom providers: tries `bearer` first, falls back to `api_key_header` on 401/403
+- User never needs to choose auth_style manually
+
+### Fix: DRY — normalize MaxBodyMB in NewHandler
+
+- Remove dual-default antipattern (config.Load + handler fallback)
+- Single normalization point in `NewHandler()`
+
 ## v1.0.11 (2026-06-21)
 
 ### Fix: multi-turn tool call history
