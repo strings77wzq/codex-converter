@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"syscall"
 	"time"
 
 	"github.com/strings77wzq/codex-converter/internal/config"
@@ -135,7 +138,28 @@ func main() {
 		WriteTimeout: 10 * time.Minute, // generous for streaming responses
 		IdleTimeout:  2 * time.Minute,
 	}
-	if err := srv.ListenAndServe(); err != nil {
+
+	// Graceful shutdown on SIGINT/SIGTERM.
+	// First signal: drain in-flight requests (30s timeout).
+	// Second signal: force exit immediately.
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		fmt.Println()
+		fmt.Println("  ⏳ 等待请求完成后关闭（再按 Ctrl+C 强制退出）")
+		go func() {
+			<-sigCh
+			os.Exit(1)
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			fmt.Printf("  ✗ 关闭超时: %v\n", err)
+		}
+	}()
+
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		// A race can still lose the bind between preflight and Listen; give the
 		// same actionable guidance instead of a raw Go error.
 		if proxy.IsAddrInUse(err) {
@@ -147,4 +171,5 @@ func main() {
 		}
 		log.Fatalf("server error: %v", err)
 	}
+	fmt.Println("  ✓ 服务已关闭")
 }

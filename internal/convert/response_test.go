@@ -123,3 +123,102 @@ func TestConvertResponse_ToolCall(t *testing.T) {
 		t.Errorf("Output[0].Arguments = %q", fc.Arguments)
 	}
 }
+
+func TestExtractText(t *testing.T) {
+	tests := []struct {
+		name    string
+		content interface{}
+		want    string
+	}{
+		{
+			name:    "string content",
+			content: "Plain text response",
+			want:    "Plain text response",
+		},
+		{
+			name:    "nil content",
+			content: nil,
+			want:    "",
+		},
+		{
+			name: "array of text blocks",
+			content: []interface{}{
+				map[string]interface{}{"type": "text", "text": "Hello "},
+				map[string]interface{}{"type": "text", "text": "world"},
+			},
+			want: "Hello world",
+		},
+		{
+			name: "mixed input_text and output_text blocks",
+			content: []interface{}{
+				map[string]interface{}{"type": "input_text", "text": "user: "},
+				map[string]interface{}{"type": "output_text", "text": "assistant reply"},
+			},
+			want: "user: assistant reply",
+		},
+		{
+			name: "array with non-text block skipped",
+			content: []interface{}{
+				map[string]interface{}{"type": "text", "text": "Hello"},
+				map[string]interface{}{"type": "image_url", "image_url": map[string]interface{}{"url": "https://example.com/img.png"}},
+			},
+			want: "Hello",
+		},
+		{
+			name:    "empty string",
+			content: "",
+			want:    "",
+		},
+		{
+			name:    "unsupported type returns empty",
+			content: 123,
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractText(tt.content)
+			if got != tt.want {
+				t.Errorf("extractText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestConvertResponse_ArrayContent(t *testing.T) {
+	finishReason := "stop"
+	chat := &types.ChatResponse{
+		ID:    "chatcmpl-arr",
+		Model: "test-model",
+		Choices: []types.ChatChoice{
+			{
+				Index: 0,
+				Message: &types.ChatMessage{
+					Role: "assistant",
+					Content: []interface{}{
+						map[string]interface{}{"type": "text", "text": "Hello"},
+						map[string]interface{}{"type": "text", "text": " from array"},
+					},
+				},
+				FinishReason: &finishReason,
+			},
+		},
+	}
+
+	resp, err := ConvertResponse(chat)
+	if err != nil {
+		t.Fatalf("ConvertResponse() error = %v", err)
+	}
+
+	if len(resp.Output) != 1 {
+		t.Fatalf("Output len = %d, want 1", len(resp.Output))
+	}
+	msg := resp.Output[0]
+	if len(msg.Content) != 1 {
+		t.Fatalf("Content len = %d, want 1", len(msg.Content))
+	}
+	if msg.Content[0].Text != "Hello from array" {
+		t.Errorf("Content[0].Text = %q, want %q", msg.Content[0].Text, "Hello from array")
+	}
+}

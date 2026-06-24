@@ -104,7 +104,7 @@ Codex ──Responses API──▶│  Responses → Chat Completions│──�
 | **Ollama** | none | Any local model | `http://localhost:11434/v1` |
 | **Custom** | configurable | Your model | Your URL |
 
-> **Model names must match exactly** what your provider expects. For example, DeepSeek uses `deepseek-v4-pro`, not `deepseek-pro` or `deepseek-v4`. Check your provider's documentation for the correct model name.
+> **Model names must match exactly** what your provider expects. For example, DeepSeek uses `deepseek-v4-pro`, not `deepseek-pro` or `deepseek-v4`. Check your provider's documentation for the correct model name. **Do not hand-edit** the `model` field in `~/.codex/config.toml` — it is auto-synced by the converter.
 
 ### Auth Style
 
@@ -113,6 +113,14 @@ Codex ──Responses API──▶│  Responses → Chat Completions│──�
 | `bearer` | Most providers (DeepSeek, Qwen, GLM, etc.) | Sends `Authorization: Bearer <key>` header |
 | `api_key_header` | MiMo, Azure-style APIs | Sends `api-key: <key>` header |
 | `none` | Ollama (local, no auth) | No authentication header |
+
+**How to choose:**
+1. Local / no key? → `none` (Ollama)
+2. Provider docs say `Authorization: Bearer`? → `bearer` (default, most OpenAI-compatible providers)
+3. Provider docs say `api-key:` (Azure-style)? → `api_key_header` (MiMo / Azure OpenAI)
+4. Not sure? → try `bearer` first; if you get 401 with a valid key, switch to `api_key_header`
+
+> **Custom providers need no manual choice**: the wizard auto-detects the auth style (tries bearer first, falls back to api_key_header on failure).
 
 ---
 
@@ -125,7 +133,7 @@ Codex ──Responses API──▶│  Responses → Chat Completions│──�
 | **Converter config** | `~/.codex-converter/config.toml` | Provider URLs, API keys, model selection |
 | **Codex config** | `~/.codex/config.toml` | Codex runtime config (auto-managed) |
 
-**You edit** `~/.codex-converter/config.toml`. The converter **auto-manages** `~/.codex/config.toml`.
+**You edit** `~/.codex-converter/config.toml`. The converter **auto-manages** `~/.codex/config.toml` — do not hand-edit the `model`, `model_provider`, and other fields written by the converter.
 
 ### Converter config (`~/.codex-converter/config.toml`)
 

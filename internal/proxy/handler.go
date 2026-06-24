@@ -134,7 +134,7 @@ func (h *Handler) handleResponses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	backendURL := normalizeBaseURL(provider.BaseURL) + "/v1/chat/completions"
+	backendURL := config.NormalizeBaseURL(provider.BaseURL) + "/v1/chat/completions"
 	reqBackend, err := http.NewRequestWithContext(r.Context(), "POST", backendURL, bytes.NewReader(chatJSON))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("backend request error: %v", err), http.StatusInternalServerError)
@@ -234,7 +234,7 @@ func (h *Handler) handleStreamingResponse(w http.ResponseWriter, resp *http.Resp
 
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // initial 64KB, max 1MB per SSE line
-	events := convert.ConvertStream(scanner)
+	events := convert.ConvertStream(resp.Request.Context(), scanner)
 
 	count := 0
 	for event := range events {
@@ -247,15 +247,4 @@ func (h *Handler) handleStreamingResponse(w http.ResponseWriter, resp *http.Resp
 		}
 	}
 	h.logf("✓ stream done (%d events)", count)
-}
-
-// normalizeBaseURL cleans a user-supplied base URL so it can be safely
-// combined with a path suffix like "/v1/chat/completions". It strips
-// trailing slashes and known common suffixes that users may copy from docs.
-func normalizeBaseURL(raw string) string {
-	u := strings.TrimRight(raw, "/")
-	u = strings.TrimSuffix(u, "/v1/chat/completions")
-	u = strings.TrimSuffix(u, "/v1")
-	u = strings.TrimSuffix(u, "/chat/completions")
-	return u
 }

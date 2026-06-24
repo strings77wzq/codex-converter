@@ -2,6 +2,7 @@ package convert
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -13,7 +14,7 @@ func TestConvertStream_ScannerError(t *testing.T) {
 	input := `data: {"id":"chatcmpl-err","choices":[{"index":0,"delta":{"content":"` + huge + `"}}]}`
 
 	scanner := bufio.NewScanner(strings.NewReader(input)) // default 64KB buffer
-	events := ConvertStream(scanner)
+	events := ConvertStream(context.Background(), scanner)
 
 	var got []StreamEvent
 	for ev := range events {
@@ -52,7 +53,7 @@ func TestConvertStream_TextDelta(t *testing.T) {
 	}, "\n")
 
 	scanner := bufio.NewScanner(strings.NewReader(input))
-	events := ConvertStream(scanner)
+	events := ConvertStream(context.Background(), scanner)
 
 	var got []StreamEvent
 	for ev := range events {
@@ -117,7 +118,7 @@ func TestConvertStream_CompletedPayload(t *testing.T) {
 
 	scanner := bufio.NewScanner(strings.NewReader(input))
 	var completed *StreamEvent
-	for ev := range ConvertStream(scanner) {
+	for ev := range ConvertStream(context.Background(), scanner) {
 		if ev.Type == "response.completed" {
 			completed = &ev
 		}
@@ -166,7 +167,7 @@ func TestConvertStream_NoDoneMarker(t *testing.T) {
 
 	scanner := bufio.NewScanner(strings.NewReader(input))
 	var got []StreamEvent
-	for ev := range ConvertStream(scanner) {
+	for ev := range ConvertStream(context.Background(), scanner) {
 		got = append(got, ev)
 	}
 	if len(got) == 0 || got[len(got)-1].Type != "response.completed" {
@@ -188,7 +189,7 @@ func TestConvertStream_MessageItemContent(t *testing.T) {
 
 	scanner := bufio.NewScanner(strings.NewReader(input))
 	var itemDone *StreamEvent
-	for ev := range ConvertStream(scanner) {
+	for ev := range ConvertStream(context.Background(), scanner) {
 		if ev.Type == "response.output_item.done" {
 			itemDone = &ev
 		}
@@ -239,7 +240,7 @@ func TestConvertStream_ToolCall(t *testing.T) {
 	}, "\n")
 
 	scanner := bufio.NewScanner(strings.NewReader(input))
-	events := ConvertStream(scanner)
+	events := ConvertStream(context.Background(), scanner)
 
 	var got []StreamEvent
 	for ev := range events {
@@ -291,7 +292,7 @@ func TestConvertStream_ToolCall(t *testing.T) {
 func TestConvertStream_Empty(t *testing.T) {
 	input := "data: [DONE]"
 	scanner := bufio.NewScanner(strings.NewReader(input))
-	events := ConvertStream(scanner)
+	events := ConvertStream(context.Background(), scanner)
 
 	var got []StreamEvent
 	for ev := range events {
@@ -307,5 +308,22 @@ func TestConvertStream_Empty(t *testing.T) {
 	}
 	if got[1].Type != "response.completed" {
 		t.Errorf("last event type = %q, want %q", got[1].Type, "response.completed")
+	}
+}
+
+func TestConvertStream_CancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	input := "data: {\"id\":\"1\",\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}"
+	scanner := bufio.NewScanner(strings.NewReader(input))
+	events := ConvertStream(ctx, scanner)
+
+	var got []StreamEvent
+	for ev := range events {
+		got = append(got, ev)
+	}
+	if len(got) != 0 {
+		t.Errorf("got %d events, want 0 for cancelled context", len(got))
 	}
 }

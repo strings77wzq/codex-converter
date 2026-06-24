@@ -2,6 +2,7 @@ package convert
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -68,11 +69,31 @@ type streamState struct {
 // object with a non-empty id, message items MUST include role + content, and a
 // terminal response.completed must always be emitted — otherwise Codex reports
 // "stream closed before response.completed".
-func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
-	ch := make(chan StreamEvent)
+//
+// The provided context is used to stop the backing goroutine: when ctx is
+// cancelled or the scanner finishes, the returned channel is closed. If the
+// context is already cancelled when ConvertStream is called, the channel is
+// closed immediately without emitting any events.
+func ConvertStream(ctx context.Context, scanner *bufio.Scanner) <-chan StreamEvent {
+	ch := make(chan StreamEvent, 64)
 
 	go func() {
 		defer close(ch)
+
+		// If context already cancelled, exit immediately without events.
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// sendEvent sends to ch or aborts when ctx is done.
+		sendEvent := func(evt StreamEvent) {
+			select {
+			case ch <- evt:
+			case <-ctx.Done():
+			}
+		}
 
 		state := &streamState{}
 		created := false
@@ -87,10 +108,10 @@ func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
 			} else {
 				state.responseID = "resp_" + id
 			}
-			ch <- StreamEvent{
+			sendEvent(StreamEvent{
 				Type: "response.created",
 				Data: fmt.Sprintf(`{"type":"response.created","response":{"id":"%s","object":"response","output":[]}}`, state.responseID),
-			}
+			})
 			created = true
 		}
 
@@ -98,11 +119,11 @@ func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
 			if !state.msgActive {
 				return
 			}
-			ch <- StreamEvent{
+			sendEvent(StreamEvent{
 				Type: "response.output_item.done",
 				Data: fmt.Sprintf(`{"type":"response.output_item.done","item":{"type":"message","id":"%s","role":"assistant","content":[{"type":"output_text","text":"%s"}]}}`,
 					state.msgItemID, escapeJSON(state.msgText.String())),
-			}
+			})
 			state.msgActive = false
 		}
 
@@ -110,16 +131,16 @@ func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
 			if !state.toolCallActive {
 				return
 			}
-			ch <- StreamEvent{
+			sendEvent(StreamEvent{
 				Type: "response.function_call_arguments.done",
 				Data: fmt.Sprintf(`{"type":"response.function_call_arguments.done","item_id":"%s","arguments":"%s"}`,
 					state.toolItemID, escapeJSON(state.toolCallArgs.String())),
-			}
-			ch <- StreamEvent{
+			})
+			sendEvent(StreamEvent{
 				Type: "response.output_item.done",
 				Data: fmt.Sprintf(`{"type":"response.output_item.done","item":{"type":"function_call","id":"%s","call_id":"%s","name":"%s","arguments":"%s"}}`,
 					state.toolItemID, state.toolCallID, state.toolCallName, escapeJSON(state.toolCallArgs.String())),
-			}
+			})
 			state.toolCallActive = false
 		}
 
@@ -135,11 +156,11 @@ func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
 				usage = fmt.Sprintf(`,"usage":{"input_tokens":%d,"output_tokens":%d,"total_tokens":%d}`,
 					state.usagePrompt, state.usageOutput, state.usageTotal)
 			}
-			ch <- StreamEvent{
+			sendEvent(StreamEvent{
 				Type: "response.completed",
 				Data: fmt.Sprintf(`{"type":"response.completed","response":{"id":"%s","object":"response","status":"completed"%s}}`,
 					state.responseID, usage),
-			}
+			})
 			finalized = true
 		}
 
@@ -185,16 +206,16 @@ func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
 					state.msgItemID = fmt.Sprintf("msg_%s", chunk.ID)
 					state.msgActive = true
 					state.msgText.Reset()
-					ch <- StreamEvent{
+					sendEvent(StreamEvent{
 						Type: "response.output_item.added",
 						Data: fmt.Sprintf(`{"type":"response.output_item.added","item":{"type":"message","id":"%s","role":"assistant","content":[]}}`, state.msgItemID),
-					}
+					})
 				}
 				state.msgText.WriteString(*delta.Content)
-				ch <- StreamEvent{
+				sendEvent(StreamEvent{
 					Type: "response.output_text.delta",
 					Data: fmt.Sprintf(`{"type":"response.output_text.delta","item_id":"%s","delta":"%s"}`, state.msgItemID, escapeJSON(*delta.Content)),
-				}
+				})
 			}
 
 			// Tool call deltas.
@@ -212,20 +233,20 @@ func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
 					state.toolCallArgs.Reset()
 					state.toolCallActive = true
 
-					ch <- StreamEvent{
+					sendEvent(StreamEvent{
 						Type: "response.output_item.added",
 						Data: fmt.Sprintf(`{"type":"response.output_item.added","item":{"type":"function_call","id":"%s","call_id":"%s","name":"%s","arguments":""}}`,
 							state.toolItemID, state.toolCallID, state.toolCallName),
-					}
+					})
 				}
 
 				if tc.Function != nil && tc.Function.Arguments != "" {
 					state.toolCallArgs.WriteString(tc.Function.Arguments)
-					ch <- StreamEvent{
+					sendEvent(StreamEvent{
 						Type: "response.function_call_arguments.delta",
 						Data: fmt.Sprintf(`{"type":"response.function_call_arguments.delta","item_id":"%s","delta":"%s"}`,
 							state.toolItemID, escapeJSON(tc.Function.Arguments)),
-					}
+					})
 				}
 			}
 
@@ -241,10 +262,10 @@ func ConvertStream(scanner *bufio.Scanner) <-chan StreamEvent {
 		}
 
 		if err := scanner.Err(); err != nil {
-			ch <- StreamEvent{
+			sendEvent(StreamEvent{
 				Type: "error",
 				Data: fmt.Sprintf(`{"type":"error","message":"%s"}`, escapeJSON(err.Error())),
-			}
+			})
 			return
 		}
 
