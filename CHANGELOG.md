@@ -1,6 +1,30 @@
 # Changelog
 
-## v1.0.12 (2026-06-21)
+## v1.0.13 (2026-06-24)
+
+### Fix: content formatting — non-streaming responses with array content
+- `convertChoice` used `fmt.Sprintf("%v", ...)` which produced Go internal form like `[{text hello}]` when a provider returned content as `[]interface{}` instead of a string
+- New `extractText(interface{}) string` mirrors `convertContent` in request.go: handles `string`, `[]interface{}` (text blocks), nil, and unsupported types
+- Reuses the existing `isTextBlock` helper; no new abstractions
+
+### Fix: base_url no longer stale after port/host change
+- `SyncCodexConfig` and `configureCodex` both hardcoded `http://127.0.0.1:8080` and skipped updates when the `[model_providers.codex-converter]` section already existed — changing port/host in the converter config left Codex pointing at the old address
+- New `codexBaseURL(host, port)` maps listen addresses to connectable ones: `0.0.0.0`/`""` → `127.0.0.1`, `::`/`[::]` → `[::1]`, everything else preserved
+- New private `setKeyInSection` helper updates `name`/`base_url`/`wire_api` inside the existing section (incremental upsert, preserves user-added keys)
+- `findKey`/`setKey` now stop at the first TOML section header so a top-level `model` key is never confused with a `model =` inside a provider section
+
+### Refactor: unify URL normalization (DRY)
+- Three copies of the same suffix-stripping logic (`normalizeBaseURL`, `cleanBaseURL`, and an inline copy in `testConnection`) are consolidated into one exported `config.NormalizeBaseURL`
+- All three call sites now use the shared function; edge-case tests relocated to `config_test.go`
+
+### Fix: ConvertStream goroutine cancellation
+- `ConvertStream` previously had no context plumbing; every `ch <-` blocked on an unbuffered channel, so a client disconnect leaked the goroutine and held the backend connection
+- New signature `ConvertStream(ctx context.Context, scanner *bufio.Scanner)`; channel buffered to 64; all sends go through a `sendEvent` closure guarded by `select { case ch <-: case <-ctx.Done(): }`
+- Handler passes `r.Context()` so cancel propagates from the client disconnect
+
+### Feat: graceful shutdown on SIGINT/SIGTERM
+- `main.go` now installs a signal handler: first signal calls `srv.Shutdown` with a 30s timeout so in-flight streaming requests finish; a second signal forces `os.Exit(1)`
+- `ListenAndServe` accepts `http.ErrServerClosed` as the expected clean-exit error
 
 ### Fix: P0 hardening — Dockerfile + request body size limit
 
