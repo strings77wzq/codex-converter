@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/strings77wzq/codex-converter/internal/config"
 )
 
 const (
@@ -203,11 +205,8 @@ func detectAuthStyle(baseURL, apiKey, model string) (string, error) {
 }
 
 func testConnection(baseURL, apiKey, model, authStyle string) error {
-	// 清洗base_url，去掉多余的后缀
-	cleanURL := strings.TrimRight(baseURL, "/")
-	cleanURL = strings.TrimSuffix(cleanURL, "/v1")
-	cleanURL = strings.TrimSuffix(cleanURL, "/v1/chat/completions")
-	cleanURL = strings.TrimSuffix(cleanURL, "/chat/completions")
+	// Normalize base_url before use
+	cleanURL := config.NormalizeBaseURL(baseURL)
 
 	// 构造测试请求
 	testURL := cleanURL + "/v1/chat/completions"
@@ -439,7 +438,7 @@ func RunSetup() (*SetupConfig, error) {
 		Providers: []ProviderConfig{
 			{
 				Name:      selectedProvider.Name,
-				BaseURL:   cleanBaseURL(baseURL),
+				BaseURL:   config.NormalizeBaseURL(baseURL),
 				Model:     model.Name,
 				APIKey:    apiKey,
 				AuthStyle: authStyle,
@@ -599,10 +598,49 @@ func configureCodex(modelName string, contextWindow int) error {
 		content = string(data)
 	}
 
-	// Check if provider already exists
+	// Check if provider already exists — update base_url if so
 	providerMarker := "[model_providers.codex-converter]"
 	if strings.Contains(content, providerMarker) {
-		return nil // Already configured
+		lines := strings.Split(content, "\n")
+		section := "[model_providers.codex-converter]"
+		prefix := "base_url = "
+		secStart := -1
+		secEnd := len(lines)
+		for i, l := range lines {
+			trimmed := strings.TrimSpace(l)
+			if trimmed == section {
+				secStart = i
+				continue
+			}
+			if secStart >= 0 && strings.HasPrefix(trimmed, "[") {
+				secEnd = i
+				break
+			}
+		}
+		if secStart >= 0 {
+			found := false
+			for i := secStart + 1; i < secEnd; i++ {
+				if strings.HasPrefix(strings.TrimSpace(lines[i]), prefix) {
+					lines[i] = prefix + strconv.Quote("http://127.0.0.1:8080")
+					found = true
+					break
+				}
+			}
+			if !found {
+				insertAt := secEnd
+				for insertAt > secStart+1 && strings.TrimSpace(lines[insertAt-1]) == "" {
+					insertAt--
+				}
+				if insertAt >= len(lines) {
+					lines = append(lines, prefix+strconv.Quote("http://127.0.0.1:8080"))
+				} else {
+					lines = append(lines[:insertAt], append([]string{prefix + strconv.Quote("http://127.0.0.1:8080")}, lines[insertAt:]...)...)
+				}
+			}
+			// #nosec G703
+			return os.WriteFile(codexPath, []byte(strings.Join(lines, "\n")), 0600)
+		}
+		return nil
 	}
 
 	// Build codex config additions
@@ -632,15 +670,4 @@ func IsFirstRun() bool {
 	path := filepath.Join(homeDir, configDir, configFile)
 	_, err = os.Stat(path)
 	return os.IsNotExist(err)
-}
-
-// cleanBaseURL normalizes a user-supplied base URL by stripping common path
-// suffixes (/v1, /v1/chat/completions, /chat/completions) so the handler can
-// safely append "/v1/chat/completions" without duplication.
-func cleanBaseURL(raw string) string {
-	u := strings.TrimRight(raw, "/")
-	u = strings.TrimSuffix(u, "/v1/chat/completions")
-	u = strings.TrimSuffix(u, "/v1")
-	u = strings.TrimSuffix(u, "/chat/completions")
-	return u
 }
