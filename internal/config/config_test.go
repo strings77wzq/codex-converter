@@ -381,3 +381,92 @@ func TestLoadConfig_APIKeyFromEnv(t *testing.T) {
 		t.Errorf("GetAPIKey() = %q, want %q", apiKey, "sk-test-123")
 	}
 }
+
+func TestCodexBaseURL(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		port int
+		want string
+	}{
+		{"localhost", "127.0.0.1", 8080, "http://127.0.0.1:8080"},
+		{"zero addr maps to localhost", "0.0.0.0", 9090, "http://127.0.0.1:9090"},
+		{"empty host maps to localhost", "", 8080, "http://127.0.0.1:8080"},
+		{"ipv6 all maps to loopback", "::", 8080, "http://[::1]:8080"},
+		{"bracketed ipv6 all", "[::]", 3000, "http://[::1]:3000"},
+		{"lan address preserved", "192.168.1.5", 3000, "http://192.168.1.5:3000"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := codexBaseURL(tt.host, tt.port)
+			if got != tt.want {
+				t.Errorf("codexBaseURL(%q, %d) = %q, want %q", tt.host, tt.port, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetKeyInSection(t *testing.T) {
+	tests := []struct {
+		name    string
+		lines   []string
+		section string
+		key     string
+		value   string
+		want    []string
+	}{
+		{
+			name:    "update existing key in section",
+			lines:   []string{"[s]", "k = \"old\"", "other = x"},
+			section: "[s]",
+			key:     "k",
+			value:   `"new"`,
+			want:    []string{"[s]", "k = \"new\"", "other = x"},
+		},
+		{
+			name:    "insert new key into section",
+			lines:   []string{"[s]", "a = 1", "", "[next]"},
+			section: "[s]",
+			key:     "b",
+			value:   "2",
+			want:    []string{"[s]", "a = 1", "b = 2", "", "[next]"},
+		},
+		{
+			name:    "section not found appends at end",
+			lines:   []string{"k = \"v\""},
+			section: "[missing]",
+			key:     "x",
+			value:   `"y"`,
+			want:    []string{"k = \"v\"", "", "[missing]", "x = \"y\""},
+		},
+		{
+			name:    "empty lines inserts section",
+			lines:   []string{},
+			section: "[s]",
+			key:     "k",
+			value:   `"v"`,
+			want:    []string{"[s]", "k = \"v\""},
+		},
+		{
+			name:    "key in wrong section not matched",
+			lines:   []string{"[a]", "k = \"a-val\"", "[b]", "k = \"b-val\""},
+			section: "[b]",
+			key:     "k",
+			value:   `"updated"`,
+			want:    []string{"[a]", "k = \"a-val\"", "[b]", "k = \"updated\""},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := setKeyInSection(tt.lines, tt.section, tt.key, tt.value)
+			if len(got) != len(tt.want) {
+				t.Fatalf("len = %d, want %d\ngot:  %v\nwant: %v", len(got), len(tt.want), got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("line %d:\n  got:  %q\n  want: %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}

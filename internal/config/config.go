@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -110,17 +111,30 @@ func SyncCodexConfig(cfg *Config) error {
 		}
 	}
 
-	// Ensure provider section exists
-	providerSection := `[model_providers.codex-converter]
-name = "codex-converter"
-base_url = "http://127.0.0.1:8080"
-wire_api = "responses"`
+	// Ensure provider section exists with current host/port
+	host := cfg.Server.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := cfg.Server.Port
+	if port <= 0 {
+		port = 8080
+	}
+	baseURL := codexBaseURL(host, port)
+	section := "[model_providers.codex-converter]"
 
-	if !hasSection(lines, "[model_providers.codex-converter]") {
+	if hasSection(lines, section) {
+		lines = setKeyInSection(lines, section, "name", strconv.Quote("codex-converter"))
+		lines = setKeyInSection(lines, section, "base_url", strconv.Quote(baseURL))
+		lines = setKeyInSection(lines, section, "wire_api", strconv.Quote("responses"))
+	} else {
 		if len(lines) > 0 && lines[len(lines)-1] != "" {
 			lines = append(lines, "")
 		}
-		lines = append(lines, splitLines(providerSection)...)
+		lines = append(lines, section)
+		lines = append(lines, "name = \"codex-converter\"")
+		lines = append(lines, "base_url = "+strconv.Quote(baseURL))
+		lines = append(lines, "wire_api = \"responses\"")
 	}
 
 	// Ensure directory exists
@@ -129,6 +143,20 @@ wire_api = "responses"`
 	}
 
 	return os.WriteFile(codexPath, []byte(joinLines(lines)), 0600)
+}
+
+// codexBaseURL constructs the base_url that the local Codex CLI should use to
+// reach the converter. Listen addresses that are not directly connectable
+// (0.0.0.0, ::) are mapped to their loopback equivalents.
+func codexBaseURL(host string, port int) string {
+	connectHost := host
+	switch host {
+	case "0.0.0.0", "":
+		connectHost = "127.0.0.1"
+	case "::", "[::]":
+		connectHost = "::1"
+	}
+	return fmt.Sprintf("http://%s", net.JoinHostPort(connectHost, strconv.Itoa(port)))
 }
 
 // splitLines splits text into lines, preserving empty lines.
@@ -165,10 +193,15 @@ func joinLines(lines []string) string {
 }
 
 // findKey returns the value of a top-level TOML key (stripped of quotes), or "" if not found.
+// It only searches lines before the first [section] header to avoid matching
+// keys inside provider-specific or MCP sections.
 func findKey(lines []string, key string) string {
 	prefix := key + " = "
 	for _, l := range lines {
 		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "[") {
+			return "" // reached first section — top-level key not found
+		}
 		if after, ok := strings.CutPrefix(trimmed, prefix); ok {
 			return strings.Trim(after, "\"")
 		}
@@ -177,25 +210,36 @@ func findKey(lines []string, key string) string {
 }
 
 // setKey sets a top-level TOML key to value, updating existing or inserting new.
+// It only operates on lines before the first [section] header to avoid
+// accidentally mutating provider-internal or MCP keys that share the same name.
 func setKey(lines []string, key, value string) []string {
 	prefix := key + " = "
+
+	// Find the end of the top-level region (first section header)
+	topEnd := len(lines)
 	for i, l := range lines {
 		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "[") {
+			topEnd = i
+			break
+		}
+	}
+
+	// Try to find existing top-level key
+	for i := 0; i < topEnd; i++ {
+		trimmed := strings.TrimSpace(lines[i])
 		if strings.HasPrefix(trimmed, prefix) {
 			lines[i] = prefix + value
 			return lines
 		}
 	}
+
 	// Not found — insert after any existing top-level keys, before first section header
 	insertAt := 0
-	for i, l := range lines {
-		trimmed := strings.TrimSpace(l)
+	for i := 0; i < topEnd; i++ {
+		trimmed := strings.TrimSpace(lines[i])
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
-		}
-		if strings.HasPrefix(trimmed, "[") {
-			insertAt = i
-			break
 		}
 		insertAt = i + 1
 	}
@@ -208,6 +252,59 @@ func setKey(lines []string, key, value string) []string {
 	return lines
 }
 
+// setKeyInSection sets a key-value pair inside a TOML section. If the section
+// exists, the key is updated (or inserted at the end of the section). If the
+// section does not exist, a new section header and the key are appended.
+func setKeyInSection(lines []string, section, key, value string) []string {
+	prefix := key + " = "
+
+	// Find section start and end
+	secStart := -1
+	secEnd := len(lines)
+	for i, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if trimmed == section {
+			secStart = i
+			continue
+		}
+		if secStart >= 0 && strings.HasPrefix(trimmed, "[") {
+			secEnd = i
+			break
+		}
+	}
+
+	if secStart < 0 {
+		// Section not found: append section header + key
+		if len(lines) > 0 && lines[len(lines)-1] != "" {
+			lines = append(lines, "")
+		}
+		lines = append(lines, section)
+		lines = append(lines, prefix+value)
+		return lines
+	}
+
+	// Search for key inside the section
+	for i := secStart + 1; i < secEnd; i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(trimmed, prefix) {
+			lines[i] = prefix + value
+			return lines
+		}
+	}
+
+	// Key not found in section — insert at end of section
+	insertAt := secEnd
+	for insertAt > secStart+1 && strings.TrimSpace(lines[insertAt-1]) == "" {
+		insertAt--
+	}
+	if insertAt >= len(lines) {
+		lines = append(lines, prefix+value)
+	} else {
+		lines = append(lines[:insertAt], append([]string{prefix + value}, lines[insertAt:]...)...)
+	}
+	return lines
+}
+
 // hasSection checks if a TOML section header exists.
 func hasSection(lines []string, section string) bool {
 	for _, l := range lines {
@@ -216,6 +313,17 @@ func hasSection(lines []string, section string) bool {
 		}
 	}
 	return false
+}
+
+// NormalizeBaseURL cleans a user-supplied base URL by stripping common path
+// suffixes (/v1/chat/completions, /v1, /chat/completions) so callers can
+// safely append "/v1/chat/completions" without duplication.
+func NormalizeBaseURL(raw string) string {
+	u := strings.TrimRight(raw, "/")
+	u = strings.TrimSuffix(u, "/v1/chat/completions")
+	u = strings.TrimSuffix(u, "/v1")
+	u = strings.TrimSuffix(u, "/chat/completions")
+	return u
 }
 
 func (c *Config) GetAPIKey(providerIndex int) (string, error) {
